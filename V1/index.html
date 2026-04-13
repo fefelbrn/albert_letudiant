@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L'Etudiant Simulateur</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="navbar">
+    <a href="#" id="brand-home" class="nav-brand" data-action="show-home">
+      <span class="logo-mark"><img src="assets/navicon.png" alt="AT logo"></span>
+      <p>L'Etudiant <strong>Simulateur</strong></p>
+    </a>
+    <nav class="nav-links">
+      <a class="active" href="#" data-action="show-home" data-nav="home">Accueil</a>
+      <a href="#" data-action="show-schools" data-nav="schools">Ecoles</a>
+      <a href="#" data-action="show-simulator" data-nav="simulator">Simulateur</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="btn btn-soft" id="login-btn" data-action="show-login">Se connecter</button>
+      <button class="btn btn-primary" id="signup-btn" data-action="show-login">S'inscrire</button>
+      <button class="btn btn-primary hidden" id="account-btn" data-action="show-simulator">Mon compte</button>
+    </div>
+  </header>
+
+  <main id="view-home" class="view">
+    <section class="hero">
+      <div class="hero-inner">
+        <p class="hero-badge">Nouveau - Simulateur d'Admission 2025</p>
+        <h1>Est-ce que mon profil<br><span>fit avec cette ecole ?</span></h1>
+        <p class="hero-sub">
+          Comparez vos notes avec les bulletins reels d'anciens eleves qui ont integre l'ecole que vous visez.
+          Une donnee exclusive que seul L'Etudiant possede.
+        </p>
+        <div class="hero-actions">
+          <button class="btn btn-light" data-action="show-login">Creer mon profil</button>
+          <button class="btn btn-outline">Explorer les ecoles</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container">
+      <h2>Explorer les ecoles</h2>
+      <p class="section-sub">Decouvrez les profils attendus et comparez-vous aux anciens eleves.</p>
+      <div class="search-wrap">
+        <input class="search" type="text" placeholder="Rechercher une ecole ou une ville...">
+        <div class="chips">
+          <span class="chip chip-active">Toutes</span>
+          <span class="chip">Ingenieur</span>
+          <span class="chip">Commerce</span>
+          <span class="chip">Sciences Po</span>
+          <span class="chip">Art & Design</span>
+        </div>
+      </div>
+
+      <div class="cards">
+        <article class="school-card">
+          <h3>Ecole Polytechnique</h3>
+          <p class="meta">Palaiseau</p>
+          <p class="desc">L'X forme des ingenieurs et scientifiques de haut niveau, avec une formation exigeante.</p>
+          <div class="tags">
+            <span>Top 5</span><span>Ingenieur</span><span>Recherche</span>
+          </div>
+          <footer><small>3 ambassadeurs</small><a href="#">Voir le profil</a></footer>
+        </article>
+        <article class="school-card">
+          <h3>HEC Paris</h3>
+          <p class="meta">Jouy-en-Josas</p>
+          <p class="desc">HEC Paris est la premiere ecole de commerce europeenne, formant les leaders de demain.</p>
+          <div class="tags">
+            <span>Top 3</span><span>Commerce</span><span>International</span>
+          </div>
+          <footer><small>2 ambassadeurs</small><a href="#">Voir le profil</a></footer>
+        </article>
+        <article class="school-card">
+          <h3>Centrale Lyon</h3>
+          <p class="meta">Lyon</p>
+          <p class="desc">Ecole Centrale de Lyon forme des ingenieurs generalistes de haut niveau.</p>
+          <div class="tags">
+            <span>Ingenieur</span><span>Generaliste</span><span>Lyon</span>
+          </div>
+          <footer><small>2 ambassadeurs</small><a href="#">Voir le profil</a></footer>
+        </article>
+      </div>
+    </section>
+
+    <section class="score-section">
+      <div class="score-head">
+        <h2>Mon Score Etudiant</h2>
+        <p>Decouvre tes forces et identifie tes axes d'amelioration</p>
+      </div>
+      <div class="container score-layout">
+        <article class="card card-large">
+          <header>
+            <h3>Profil de competences</h3>
+            <span class="score-pill">87/100</span>
+          </header>
+          <div class="fake-radar"></div>
+        </article>
+        <article class="card card-large">
+          <header>
+            <h3>Heatmap Notes</h3>
+            <span class="score-pill">15.4/20</span>
+          </header>
+          <div class="fake-heatmap"></div>
+        </article>
+        <article class="card student-id">
+          <h3>Carte Etudiante</h3>
+          <div class="avatar"></div>
+          <p class="student-name">Lucas Morel</p>
+          <ul>
+            <li>Lyon, 69003</li>
+            <li>Lycee du Parc</li>
+            <li>Lycee - Terminale</li>
+            <li>Generale - Spe Maths / SES</li>
+          </ul>
+          <p class="global-score">Score global <strong>88/100</strong></p>
+        </article>
+      </div>
+
+      <div class="container profile-block">
+        <h3>Complete ton profil</h3>
+        <p>Renseigne tes informations pour debloquer une analyse detaillee et des recommandations personnalisees.</p>
+        <div class="profile-grid">
+          <input type="text" placeholder="ton@email.com">
+          <input type="text" placeholder="Moyenne generale (/20)">
+          <input type="text" placeholder="Moyenne Francais (/20)">
+          <input type="text" placeholder="06 12 34 56 78">
+          <input type="text" placeholder="Moyenne Maths (/20)">
+          <button class="btn btn-gradient">Debloquer mon analyse</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container">
+      <article class="grade-card">
+        <table>
+          <tbody>
+            <tr><td>Mathematiques</td><td>15/20</td></tr>
+            <tr><td>Francais</td><td>16/20</td></tr>
+            <tr><td>Physique-Chimie</td><td>12/20</td></tr>
+            <tr><td>Anglais</td><td>17/20</td></tr>
+            <tr><td>Histoire-Geo</td><td>16/20</td></tr>
+            <tr><td>SVT</td><td>12/20</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="gated-card">
+        <h3>Bulletins Ambassadeurs</h3>
+        <p>2 anciens eleves ont partage leur bulletin.</p>
+        <div class="lock-zone">
+          <p class="lock-title">Acces reserve</p>
+          <p>Les bulletins des ambassadeurs sont accessibles uniquement apres avoir visite le salon (scan QR code).</p>
+          <button class="btn btn-primary">Simuler l'acces salon</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <main id="view-schools" class="view hidden">
+    <section class="section container">
+      <h2>Classement general des ecoles</h2>
+      <p class="section-sub">Filtre par type d'etablissement et compare rapidement.</p>
+
+      <div class="ranking-controls">
+        <input class="search" id="schools-search" type="text" placeholder="Rechercher une ecole ou une ville...">
+        <div class="chips" id="schools-filters">
+          <button class="chip chip-active" data-filter="all">Toutes</button>
+          <button class="chip" data-filter="commerce">Ecoles de commerce</button>
+          <button class="chip" data-filter="ingenieur">Ecoles d'ingenieur</button>
+          <button class="chip" data-filter="design">Design / Graphisme</button>
+          <button class="chip" data-filter="universite">Universites</button>
+        </div>
+        <div class="sort-row">
+          <label for="schools-sort">Trier par :</label>
+          <select id="schools-sort">
+            <option value="name-asc">Ordre alphabetique (A-Z)</option>
+            <option value="score-desc">Score d'admission (decroissant)</option>
+            <option value="score-asc">Score d'admission (ascendant)</option>
+            <option value="rank-asc">Rang general (ascendant)</option>
+            <option value="rank-desc">Rang general (decroissant)</option>
+          </select>
+        </div>
+        <div class="departments-filter">
+          <p>Departements :</p>
+          <div class="departments-options" id="departments-options">
+            <label><input type="checkbox" value="75"> Paris (75)</label>
+            <label><input type="checkbox" value="69"> Rhone (69)</label>
+            <label><input type="checkbox" value="91"> Essonne (91)</label>
+            <label><input type="checkbox" value="92"> Hauts-de-Seine (92)</label>
+            <label><input type="checkbox" value="77"> Seine-et-Marne (77)</label>
+            <label><input type="checkbox" value="78"> Yvelines (78)</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="ranking-list" id="schools-list"></div>
+    </section>
+  </main>
+
+  <main id="view-login" class="view hidden">
+    <section class="auth-wrap">
+      <form class="auth-card" id="login-form">
+        <h2>Connexion</h2>
+        <p>Connecte-toi pour acceder a ton espace prive enrichi.</p>
+        <input type="email" id="login-email" placeholder="email@exemple.com" required>
+        <input type="password" id="login-password" placeholder="Mot de passe" minlength="6" required>
+        <button class="btn btn-primary" type="submit">Se connecter</button>
+        <button class="btn btn-soft" type="button" data-action="show-home">Retour</button>
+      </form>
+    </section>
+  </main>
+
+  <main id="view-private" class="view hidden">
+    <section class="private-head container">
+      <div>
+        <h2>Espace prive</h2>
+        <p>Ton hub personnel : events, donnees, profil candidat et comparatifs.</p>
+      </div>
+      <button class="btn btn-soft" id="logout-btn">Se deconnecter</button>
+    </section>
+
+    <section class="container">
+      <div class="tabs-row">
+        <button class="tab-btn active" data-tab="infos">Infos perso</button>
+        <button class="tab-btn" data-tab="futurs">Futurs events inscrits</button>
+        <button class="tab-btn" data-tab="events">Mes events</button>
+        <button class="tab-btn" data-tab="profil">Mon profil candidat</button>
+        <button class="tab-btn" data-tab="datas">Mes datas</button>
+      </div>
+
+      <div class="tab-panel" id="tab-infos">
+        <div class="info-grid">
+          <article class="mini-card"><h3>Nom</h3><p>Lucas Morel</p></article>
+          <article class="mini-card"><h3>Ville</h3><p>Lyon, 69003</p></article>
+          <article class="mini-card"><h3>Etablissement</h3><p>Lycee du Parc</p></article>
+          <article class="mini-card"><h3>Filiere</h3><p>Generale - Spe Maths / SES</p></article>
+        </div>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-futurs">
+        <article class="event-card"><strong>Salon Post-Bac Paris 2026</strong><span>15 mai 2026</span></article>
+        <article class="event-card"><strong>Meetup Ambassadeurs Ingenieur</strong><span>22 mai 2026</span></article>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-events">
+        <article class="event-card"><strong>Salon Orientation Lyon</strong><span>02 mars 2026</span></article>
+        <article class="event-card"><strong>Webinaire HEC x L'Etudiant</strong><span>16 fev. 2026</span></article>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-profil">
+        <section class="score-section">
+          <div class="score-head">
+            <h2>Mon Score Etudiant</h2>
+            <p>Decouvre tes forces et identifie tes axes d'amelioration</p>
+          </div>
+          <div class="container score-layout">
+            <article class="card card-large">
+              <header>
+                <h3>Profil de competences</h3>
+                <span class="score-pill">87/100</span>
+              </header>
+              <div class="fake-radar"></div>
+            </article>
+            <article class="card card-large">
+              <header>
+                <h3>Heatmap Notes</h3>
+                <span class="score-pill">15.4/20</span>
+              </header>
+              <div class="fake-heatmap"></div>
+            </article>
+            <article class="card student-id">
+              <h3>Carte Etudiante</h3>
+              <div class="avatar"></div>
+              <p class="student-name">Lucas Morel</p>
+              <ul>
+                <li>Lyon, 69003</li>
+                <li>Lycee du Parc</li>
+                <li>Lycee - Terminale</li>
+                <li>Generale - Spe Maths / SES</li>
+              </ul>
+              <p class="global-score">Score global <strong>88/100</strong></p>
+            </article>
+          </div>
+
+          <div class="container profile-block">
+            <h3>Complete ton profil</h3>
+            <p>Renseigne tes informations pour debloquer une analyse detaillee et des recommandations personnalisees.</p>
+            <div class="profile-grid">
+              <input type="text" placeholder="ton@email.com">
+              <input type="text" placeholder="Moyenne generale (/20)">
+              <input type="text" placeholder="Moyenne Francais (/20)">
+              <input type="text" placeholder="06 12 34 56 78">
+              <input type="text" placeholder="Moyenne Maths (/20)">
+              <button class="btn btn-gradient">Debloquer mon analyse</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="section container">
+          <article class="grade-card">
+            <table>
+              <tbody>
+                <tr><td>Mathematiques</td><td>15/20</td></tr>
+                <tr><td>Francais</td><td>16/20</td></tr>
+                <tr><td>Physique-Chimie</td><td>12/20</td></tr>
+                <tr><td>Anglais</td><td>17/20</td></tr>
+                <tr><td>Histoire-Geo</td><td>16/20</td></tr>
+                <tr><td>SVT</td><td>12/20</td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="gated-card">
+            <h3>Bulletins Ambassadeurs</h3>
+            <p>2 anciens eleves ont partage leur bulletin.</p>
+            <div class="lock-zone">
+              <p class="lock-title">Acces reserve</p>
+              <p>Les bulletins des ambassadeurs sont accessibles uniquement apres avoir visite le salon (scan QR code).</p>
+              <button class="btn btn-primary">Simuler l'acces salon</button>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-datas">
+        <div class="info-grid">
+          <article class="mini-card"><h3>Score global</h3><p>88/100</p></article>
+          <article class="mini-card"><h3>Moyenne generale</h3><p>15.4/20</p></article>
+          <article class="mini-card"><h3>Acces bulletins</h3><p>Debloque apres scan QR code</p></article>
+          <article class="mini-card"><h3>Derniere MAJ</h3><p>Aujourd'hui</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -7,9 +7,9 @@ __pycache__/
 
 # Node / frontend
 node_modules/
-original/node_modules/
 dist/
-original/dist/
+original/
+
 
 # Logs
 *.log
@@ -20,3 +20,6 @@ yarn-error.log*
 # IDE
 .idea/
 .vscode/
+
+# Exports CSV générés (trop lourds ou à régénérer localement)
+moc_data/Résultats/*.csv

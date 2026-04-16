@@ -1,0 +1,255 @@
+.candidate-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.candidate-dashboard__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.candidate-dashboard__eyebrow {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.candidate-dashboard__head h3 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.candidate-dashboard__meta {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.candidate-dashboard__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-muted {
+  background: #f4f5f8;
+  color: #5a6174;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.candidate-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.candidate-kpi {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.candidate-kpi h4 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.candidate-kpi__value {
+  margin: 8px 0 4px;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.candidate-kpi__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.candidate-dashboard__grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.candidate-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.candidate-panel--wide {
+  grid-column: span 1;
+}
+
+.candidate-panel__head h4 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.candidate-panel__head p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.radar-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 180px);
+  gap: 12px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.radar-svg {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+
+.radar-poly {
+  fill: rgba(228, 12, 53, 0.18);
+  stroke: var(--red);
+  stroke-width: 0.9;
+}
+
+.radar-label {
+  font-size: 3.2px;
+  fill: var(--muted);
+}
+
+.radar-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.radar-legend li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.radar-legend strong {
+  color: var(--text);
+}
+
+.heatmap-scroll {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.heatmap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.heatmap-table th,
+.heatmap-table td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.heatmap-table th[scope="row"] {
+  text-align: left;
+  font-weight: 600;
+  background: #fafbfc;
+}
+
+.heatmap-cell.heat-high {
+  background: rgba(228, 12, 53, 0.12);
+  font-weight: 700;
+}
+
+.heatmap-cell.heat-mid {
+  background: rgba(18, 123, 144, 0.08);
+}
+
+.heatmap-cell.heat-low {
+  background: rgba(107, 114, 128, 0.08);
+}
+
+.heatmap-cell.heat-empty {
+  color: var(--muted);
+}
+
+.sup-grade-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.sup-grade-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+  font-size: 13px;
+}
+
+.sup-grade-list__key {
+  color: var(--muted);
+}
+
+.sup-grade-list__val {
+  font-weight: 700;
+}
+
+.candidate-empty {
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+
+.candidate-dashboard__foot {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.candidate-dashboard__foot strong {
+  color: var(--text);
+}
+
+@media (max-width: 960px) {
+  .candidate-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .candidate-dashboard__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .radar-wrap {
+    grid-template-columns: 1fr;
+  }
+}

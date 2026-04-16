@@ -4,12 +4,14 @@
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Node / frontend
 node_modules/
+original/node_modules/
 dist/
-original/
-
+original/dist/
+original
 
 # Logs
 *.log
@@ -21,5 +23,9 @@ yarn-error.log*
 .idea/
 .vscode/
 
-# Exports CSV générés (trop lourds ou à régénérer localement)
+# Environment
+.env
+backend/.env
+
+# Generated datasets
 moc_data/Résultats/*.csv

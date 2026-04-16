@@ -20,6 +20,7 @@ export function Navbar() {
         <NavLink to="/">Accueil</NavLink>
         <NavLink to="/schools">Ecoles</NavLink>
         <NavLink to={isAuthenticated ? "/private" : "/login"}>Simulateur</NavLink>
+        <NavLink to="/linkage">Linkage</NavLink>
       </nav>
 
       <div className="nav-actions">

@@ -2,6 +2,7 @@ import { type ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/layout/Navbar";
 import { HomePage } from "./pages/HomePage";
+import { LinkagePage } from "./pages/LinkagePage";
 import { LoginPage } from "./pages/LoginPage";
 import { PrivatePage } from "./pages/PrivatePage";
 import { SchoolsPage } from "./pages/SchoolsPage";
@@ -24,6 +25,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/schools" element={<SchoolsPage />} />
+        <Route path="/linkage" element={<LinkagePage />} />
         <Route
           path="/login"
           element={

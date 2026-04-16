@@ -35,6 +35,18 @@ def generate_student_leads(n=300000):
     df["email"] = df["prenom"].str.lower() + "." + df["nom"].str.lower() + df["id"].astype(str) + "@mail.fr"
     df["tel"] = "06" + np.random.randint(10000000, 99999999, n).astype(str)
 
+    # Profil de reference en premiere ligne, aligne avec le CSV ambassadeurs.
+    # Ceci permet d'avoir toujours un "compte etudiant de base" stable pour les demos Linkage.
+    if len(df) > 0:
+        df.loc[0, "id"] = 1
+        df.loc[0, "prenom"] = "Thomas"
+        df.loc[0, "nom"] = "Bernard"
+        df.loc[0, "niveau_actuel"] = "Bac+3"
+        df.loc[0, "ville"] = "Toulouse"
+        df.loc[0, "ecole_actuelle"] = "ENSA Lyon"
+        df.loc[0, "email"] = "thomas.bernard1@etudiant.fr"
+        df.loc[0, "tel"] = "0639397519"
+
     # --- Génération des colonnes de notes (150+ colonnes) ---
     # On crée une "Performance de base" par étudiant pour garder une cohérence (un bon élève reste bon)
     base_notes = np.random.uniform(8, 17, n)
@@ -76,9 +88,9 @@ def generate_student_leads(n=300000):
     out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = out_dir / "database_etudiants_300k.csv"
 
-    print("Sauvegarde du fichier (ceci peut prendre un moment)...")
+    print("Sauvegarde du fichier ...")
     df.to_csv(csv_path, index=False)
-    print(f"Fichier généré avec succès : {csv_path}")
+    print(f"Fichier généré : {csv_path}")
 
 
 if __name__ == "__main__":

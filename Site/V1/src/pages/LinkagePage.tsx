@@ -70,8 +70,9 @@ export function LinkagePage() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [activeTypes, setActiveTypes] = useState<string[]>([]);
-  const [maxEdges, setMaxEdges] = useState(300);
-  const [maxDepth, setMaxDepth] = useState(2);
+  const [maxEdges, setMaxEdges] = useState(120);
+  const [maxDepth, setMaxDepth] = useState(1);
+  const [maxNodes, setMaxNodes] = useState(72);
   const [requestVersion, setRequestVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,6 +89,7 @@ export function LinkagePage() {
           centerEmail: profile.email || "",
           maxEdges: String(maxEdges),
           maxDepth: String(maxDepth),
+          maxNodes: String(maxNodes),
         });
         const response = await fetch(apiUrl(`/api/linkage/graph?${query.toString()}`), {
           signal: controller.signal,
@@ -122,7 +124,7 @@ export function LinkagePage() {
 
     void loadGraph();
     return () => controller.abort();
-  }, [maxDepth, maxEdges, profile.email, requestVersion]);
+  }, [maxDepth, maxEdges, maxNodes, profile.email, requestVersion]);
 
   const graphWithUser = useMemo(() => {
     const fullName = `${profile.prenom} ${profile.nom}`.trim();
@@ -250,6 +252,7 @@ export function LinkagePage() {
     [filteredGraph.links.length, filteredGraph.nodes.length],
   );
 
+  const isHeavyGraph = filteredGraph.nodes.length > 48;
   const pinnedNode = selectedNode ?? hoveredNode;
 
   return (
@@ -270,19 +273,37 @@ export function LinkagePage() {
             <h3>Filtrer les noeuds</h3>
             <p className="linkage-meta">
               {stats.nodes} noeuds - {stats.links} connexions
+              {graph.meta?.maxNodes != null ? (
+                <>
+                  {" "}
+                  (plafond API: {graph.meta.maxNodes} noeuds)
+                </>
+              ) : null}
             </p>
             <div className="linkage-controls">
               <label htmlFor="linkage-max-edges">
-                Max relations: <strong>{maxEdges}</strong>
+                Max relations analysees: <strong>{maxEdges}</strong>
               </label>
               <input
                 id="linkage-max-edges"
                 type="range"
-                min={50}
-                max={800}
-                step={25}
+                min={40}
+                max={280}
+                step={20}
                 value={maxEdges}
                 onChange={(event) => setMaxEdges(Number(event.target.value))}
+              />
+              <label htmlFor="linkage-max-nodes">
+                Max noeuds affiches: <strong>{maxNodes}</strong>
+              </label>
+              <input
+                id="linkage-max-nodes"
+                type="range"
+                min={32}
+                max={120}
+                step={4}
+                value={maxNodes}
+                onChange={(event) => setMaxNodes(Number(event.target.value))}
               />
               <label htmlFor="linkage-max-depth">Profondeur:</label>
               <select
@@ -290,7 +311,7 @@ export function LinkagePage() {
                 value={maxDepth}
                 onChange={(event) => setMaxDepth(Number(event.target.value))}
               >
-                <option value={1}>1 saut</option>
+                <option value={1}>1 saut (recommande gros volumes)</option>
                 <option value={2}>2 sauts</option>
                 <option value={3}>3 sauts</option>
               </select>
@@ -311,11 +332,18 @@ export function LinkagePage() {
               ))}
             </div>
             <p className="linkage-hint">
-              Astuce: glisse un noeud pour le repositionner. Les autres restent fixes.
+              Astuce: glisse un noeud pour le repositionner. Gros volumes: profondeur 1 saut et moins de relations
+              analysees = chargement plus rapide et graphe plus lisible.
             </p>
             {graph.meta?.truncated ? (
               <p className="linkage-warning">
-                Graphe tronque pour lisibilite ({graph.meta.returnedEdges}/{graph.meta.totalRelations} relations).
+                Relations tronquees cote serveur ({graph.meta.returnedEdges}/{graph.meta.totalRelations ?? "?"}).
+              </p>
+            ) : null}
+            {graph.meta?.truncatedNodes ? (
+              <p className="linkage-warning">
+                Noeuds limites a {graph.meta.maxNodes} pour lisibilite (avant plafond:{" "}
+                {graph.meta.totalNodesBeforeCap ?? "?"} noeuds).
               </p>
             ) : null}
           </section>
@@ -334,14 +362,15 @@ export function LinkagePage() {
                 width={900}
                 height={560}
                 graphData={filteredGraph}
-                cooldownTicks={180}
+                cooldownTicks={isHeavyGraph ? 90 : 160}
+                d3VelocityDecay={isHeavyGraph ? 0.45 : 0.35}
                 nodeLabel={(node) => {
                   const typedNode = node as GraphNode;
                   return `${getPrimaryNodeInfo(typedNode)} (${typedNode.type})`;
                 }}
-                nodeRelSize={5}
+                nodeRelSize={isHeavyGraph ? 3 : 5}
                 nodeColor={(node) => nodePalette[(node as GraphNode).type] ?? "#6D7483"}
-                linkDirectionalParticles={2}
+                linkDirectionalParticles={isHeavyGraph ? 0 : 2}
                 linkDirectionalParticleWidth={1.5}
                 onNodeClick={(node) => setSelectedNode(node as GraphNode)}
                 onNodeHover={(node) => setHoveredNode((node as GraphNode | null) ?? null)}

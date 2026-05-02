@@ -81,14 +81,15 @@ API graph: <http://localhost:4000/api/linkage/graph>
 Le endpoint graph supporte:
 - `centerEmail`
 - `centerStudentId`
-- `maxDepth` (1..3)
-- `maxEdges` (20..1200)
+- `maxDepth` (1..3) — sur gros volumes, preferer 1
+- `maxEdges` (15..400) — borne les relations analysees avant rendu
+- `maxNodes` (24..96) — plafond de noeuds renvoyes (priorite ecoles/villes puis echantillon d’eleves)
 - `types` (CSV des types de relation)
 
 Exemple:
 
 ```bash
-http://localhost:4000/api/linkage/graph?centerEmail=alice.martin1@mail.fr&maxDepth=2&maxEdges=300
+http://localhost:4000/api/linkage/graph?centerEmail=arthur.durand1@mail.fr&maxDepth=1&maxEdges=120&maxNodes=72
 ```
 
 ## 5) Lancer le frontend

@@ -52,7 +52,8 @@ const CSV_AMBASSADORS_PATH =
 
 const GRAPH_LIMITS = {
   maxDepth: 3,
-  maxEdges: 1200,
+  maxEdges: 400,
+  maxNodes: 96,
 };
 
 const app = express();
@@ -104,6 +105,37 @@ function mapRelationship(relationship) {
       Object.entries(relationship.properties).map(([key, value]) => [key, stringifyValue(value)]),
     ),
   };
+}
+
+function graphPrimaryLabel(node) {
+  return node.labels && node.labels[0] ? node.labels[0] : "Unknown";
+}
+
+/** Limite le nombre de noeuds (surtout Student) pour graphes lisibles sur gros volumes. */
+function capGraphPayload(centerElementId, uniqueNodes, uniqueEdges, maxNodes) {
+  if (uniqueNodes.length <= maxNodes) {
+    return { nodes: uniqueNodes, edges: uniqueEdges, truncatedNodes: false };
+  }
+  const kept = new Set();
+  const center = uniqueNodes.find((n) => n.elementId === centerElementId);
+  if (center) {
+    kept.add(centerElementId);
+  }
+  const nonStudents = uniqueNodes.filter((n) => graphPrimaryLabel(n) !== "Student");
+  const students = uniqueNodes.filter((n) => graphPrimaryLabel(n) === "Student");
+  for (const n of nonStudents) {
+    if (kept.size >= maxNodes) break;
+    kept.add(n.elementId);
+  }
+  for (const n of students) {
+    if (kept.size >= maxNodes) break;
+    kept.add(n.elementId);
+  }
+  const keptEdges = uniqueEdges.filter(
+    (e) => kept.has(e.startNodeElementId) && kept.has(e.endNodeElementId),
+  );
+  const keptNodes = uniqueNodes.filter((n) => kept.has(n.elementId));
+  return { nodes: keptNodes, edges: keptEdges, truncatedNodes: true };
 }
 
 async function runInBatches(filePath, mapper, batchSize, callback, limit) {
@@ -313,8 +345,9 @@ app.post("/api/linkage/import", async (req, res) => {
 app.get("/api/linkage/graph", async (req, res) => {
   const session = driver.session(neo4jSessionConfig(neo4j.session.READ));
 
-  const maxDepth = Math.max(1, Math.min(GRAPH_LIMITS.maxDepth, Number(req.query.maxDepth ?? 2)));
-  const maxEdges = Math.max(20, Math.min(GRAPH_LIMITS.maxEdges, Number(req.query.maxEdges ?? 300)));
+  const maxDepth = Math.max(1, Math.min(GRAPH_LIMITS.maxDepth, Number(req.query.maxDepth ?? 1)));
+  const maxEdges = Math.max(15, Math.min(GRAPH_LIMITS.maxEdges, Number(req.query.maxEdges ?? 120)));
+  const maxNodes = Math.max(24, Math.min(GRAPH_LIMITS.maxNodes, Number(req.query.maxNodes ?? 72)));
   const centerEmail = normalizeText(req.query.centerEmail).toLowerCase() || null;
   const centerStudentId = normalizeText(req.query.centerStudentId) || null;
   const typesQuery = normalizeText(req.query.types);
@@ -352,10 +385,12 @@ app.get("/api/linkage/graph", async (req, res) => {
         edges: [],
         meta: {
           truncated: false,
+          truncatedNodes: false,
           returnedNodes: 0,
           returnedEdges: 0,
           maxDepth,
           maxEdges,
+          maxNodes,
           centerFallbackUsed,
         },
       });
@@ -406,10 +441,12 @@ app.get("/api/linkage/graph", async (req, res) => {
         edges: [],
         meta: {
           truncated: false,
+          truncatedNodes: false,
           returnedNodes: 1,
           returnedEdges: 0,
           maxDepth,
           maxEdges,
+          maxNodes,
           centerFallbackUsed,
         },
       });
@@ -425,16 +462,21 @@ app.get("/api/linkage/graph", async (req, res) => {
       new Map(relationships.map((edge) => [edge.elementId, edge])).values(),
     );
 
+    const capped = capGraphPayload(centerNode.elementId, uniqueNodes, uniqueEdges, maxNodes);
+
     return res.json({
-      nodes: uniqueNodes.map(mapNode),
-      edges: uniqueEdges.map(mapRelationship),
+      nodes: capped.nodes.map(mapNode),
+      edges: capped.edges.map(mapRelationship),
       meta: {
         truncated: totalRelations > uniqueEdges.length,
+        truncatedNodes: capped.truncatedNodes,
+        totalNodesBeforeCap: uniqueNodes.length,
         totalRelations,
-        returnedNodes: uniqueNodes.length,
-        returnedEdges: uniqueEdges.length,
+        returnedNodes: capped.nodes.length,
+        returnedEdges: capped.edges.length,
         maxDepth,
         maxEdges,
+        maxNodes,
         relationshipTypes,
         centerFallbackUsed,
       },

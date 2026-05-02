@@ -20,11 +20,14 @@ export type GraphResponse = {
   edges: GraphEdge[];
   meta?: {
     truncated: boolean;
+    truncatedNodes?: boolean;
+    totalNodesBeforeCap?: number;
     totalRelations?: number;
     returnedNodes: number;
     returnedEdges: number;
     maxDepth: number;
     maxEdges: number;
+    maxNodes?: number;
     relationshipTypes?: string[];
     centerFallbackUsed?: boolean;
   };

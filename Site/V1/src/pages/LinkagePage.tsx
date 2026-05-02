@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { useEffect } from "react";
 import type { GraphNode, GraphResponse } from "../types/linkageGraph";
+import { apiUrl } from "../lib/apiBase";
 import { useUserProfile } from "../state/UserProfileContext";
 
 type LinkObject = {
@@ -88,7 +89,7 @@ export function LinkagePage() {
           maxEdges: String(maxEdges),
           maxDepth: String(maxDepth),
         });
-        const response = await fetch(`/api/linkage/graph?${query.toString()}`, {
+        const response = await fetch(apiUrl(`/api/linkage/graph?${query.toString()}`), {
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -109,7 +110,9 @@ export function LinkagePage() {
         });
       } catch (fetchError) {
         if (!(fetchError instanceof DOMException && fetchError.name === "AbortError")) {
-          setError("Le service Linkage est indisponible. Verifie que le backend et Neo4j tournent.");
+          setError(
+            "Le service Linkage est indisponible. En production, configure VITE_API_BASE_URL vers ton API, ou lance le backend + Neo4j en local.",
+          );
         }
       } finally {
         setLoading(false);

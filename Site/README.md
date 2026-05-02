@@ -1,6 +1,6 @@
 # L'Etudiant - Linkage (Neo4j)
 
-Ce projet contient maintenant:
+Ce dossier `Site/` contient:
 - un front React/Vite dans `V1`
 - un backend Express/Neo4j dans `backend`
 - une base Neo4j locale via Docker Compose
@@ -12,7 +12,7 @@ Ce projet contient maintenant:
 
 ## 1) Lancer Neo4j
 
-Depuis la racine du projet:
+Depuis la racine du dossier `Site/`:
 
 ```bash
 docker compose up -d
@@ -89,6 +89,18 @@ npm run dev
 Frontend: <http://localhost:5173>
 
 L'onglet `Linkage` est disponible dans la navbar.
+
+## 6) Deploiement Vercel (Linkage)
+
+Le front utilise par defaut `/api/...` en local via le proxy Vite.
+
+En production (Vercel), il faut definir l'origine de ton API:
+
+- `VITE_API_BASE_URL` = `https://ton-api.example.com` (sans slash final)
+
+Puis redeployer le projet Vercel.
+
+Note: sur Vercel, le **Root Directory** doit pointer vers `Site/V1` si ton repo contient aussi `extension/` a la racine.
 
 ## Arreter les services
 

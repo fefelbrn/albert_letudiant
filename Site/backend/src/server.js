@@ -24,13 +24,23 @@ const NEO4J_URI =
   sanitizeEnvString(process.env.NEO4J_URI) || (IS_RENDER ? "" : "bolt://localhost:7687");
 const NEO4J_USERNAME = sanitizeEnvString(process.env.NEO4J_USERNAME) || "neo4j";
 const NEO4J_PASSWORD = sanitizeEnvString(process.env.NEO4J_PASSWORD) || "neo4jpassword";
+/** Aura fournit souvent un nom de base = id d’instance (fichier .env au téléchargement). Local Docker : laisser vide. */
+const NEO4J_DATABASE = sanitizeEnvString(process.env.NEO4J_DATABASE);
 
 if (!NEO4J_URI) {
   console.error(
     "[Neo4j] NEO4J_URI est vide ou absent. Dans Render → Environment, ajoute NEO4J_URI avec l’URI Aura (ex. neo4j+s://xxxx.databases.neo4j.io). " +
-      "Sans guillemets, sans espace en trop. Les noms exacts sont NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD.",
+      "Sans guillemets, sans espace en trop. Variables: NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, et optionnellement NEO4J_DATABASE (Aura).",
   );
   process.exit(1);
+}
+
+function neo4jSessionConfig(accessMode) {
+  const cfg = { defaultAccessMode: accessMode };
+  if (NEO4J_DATABASE) {
+    cfg.database = NEO4J_DATABASE;
+  }
+  return cfg;
 }
 const IMPORT_BATCH_SIZE = Math.max(100, Number(process.env.IMPORT_BATCH_SIZE ?? 2000));
 const CSV_STUDENTS_PATH =
@@ -244,7 +254,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/api/linkage/import", async (req, res) => {
-  const session = driver.session({ defaultAccessMode: neo4j.session.WRITE });
+  const session = driver.session(neo4jSessionConfig(neo4j.session.WRITE));
   const startedAt = Date.now();
 
   const studentsPath = req.body?.studentsPath
@@ -301,7 +311,7 @@ app.post("/api/linkage/import", async (req, res) => {
 });
 
 app.get("/api/linkage/graph", async (req, res) => {
-  const session = driver.session({ defaultAccessMode: neo4j.session.READ });
+  const session = driver.session(neo4jSessionConfig(neo4j.session.READ));
 
   const maxDepth = Math.max(1, Math.min(GRAPH_LIMITS.maxDepth, Number(req.query.maxDepth ?? 2)));
   const maxEdges = Math.max(20, Math.min(GRAPH_LIMITS.maxEdges, Number(req.query.maxEdges ?? 300)));

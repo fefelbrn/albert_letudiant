@@ -8,10 +8,30 @@ const csvParser = require("csv-parser");
 
 dotenv.config();
 
+/** Trim, strip accidental wrapping quotes (common in dashboards), treat blank as unset. */
+function sanitizeEnvString(value) {
+  if (value === undefined || value === null) return "";
+  let s = String(value).trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
 const PORT = Number(process.env.PORT ?? 4000);
-const NEO4J_URI = process.env.NEO4J_URI ?? "bolt://localhost:7687";
-const NEO4J_USERNAME = process.env.NEO4J_USERNAME ?? "neo4j";
-const NEO4J_PASSWORD = process.env.NEO4J_PASSWORD ?? "neo4jpassword";
+const IS_RENDER = process.env.RENDER === "true" || process.env.RENDER === "1";
+const NEO4J_URI =
+  sanitizeEnvString(process.env.NEO4J_URI) || (IS_RENDER ? "" : "bolt://localhost:7687");
+const NEO4J_USERNAME = sanitizeEnvString(process.env.NEO4J_USERNAME) || "neo4j";
+const NEO4J_PASSWORD = sanitizeEnvString(process.env.NEO4J_PASSWORD) || "neo4jpassword";
+
+if (!NEO4J_URI) {
+  console.error(
+    "[Neo4j] NEO4J_URI est vide ou absent. Dans Render → Environment, ajoute NEO4J_URI avec l’URI Aura (ex. neo4j+s://xxxx.databases.neo4j.io). " +
+      "Sans guillemets, sans espace en trop. Les noms exacts sont NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD.",
+  );
+  process.exit(1);
+}
 const IMPORT_BATCH_SIZE = Math.max(100, Number(process.env.IMPORT_BATCH_SIZE ?? 2000));
 const CSV_STUDENTS_PATH =
   process.env.CSV_STUDENTS_PATH ??
@@ -29,11 +49,18 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
-const driver = neo4j.driver(
-  NEO4J_URI,
-  neo4j.auth.basic(NEO4J_USERNAME, NEO4J_PASSWORD),
-  { disableLosslessIntegers: true },
-);
+let driver;
+try {
+  driver = neo4j.driver(NEO4J_URI, neo4j.auth.basic(NEO4J_USERNAME, NEO4J_PASSWORD), {
+    disableLosslessIntegers: true,
+  });
+} catch (err) {
+  console.error(
+    "[Neo4j] Impossible d’initialiser le driver. Vérifie NEO4J_URI (Aura: neo4j+s://…databases.neo4j.io), sans guillemets.",
+    err && err.message,
+  );
+  process.exit(1);
+}
 
 function normalizeText(value) {
   return String(value ?? "").trim();

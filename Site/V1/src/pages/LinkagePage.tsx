@@ -101,9 +101,10 @@ export function LinkagePage() {
         setSelectedNode(null);
         setHoveredNode(null);
         setActiveTypes((current) => {
-          const discoveredTypes = Array.from(new Set(payload.nodes.map((node) => node.type)));
+          const apiTypes = Array.from(new Set(payload.nodes.map((node) => node.type)));
+          const discoveredTypes = Array.from(new Set(["User", ...apiTypes]));
           if (current.length === 0) {
-            return discoveredTypes;
+            return discoveredTypes.length > 0 ? discoveredTypes : ["User"];
           }
           const next = current.filter((type) => discoveredTypes.includes(type));
           return next.length > 0 ? next : discoveredTypes;

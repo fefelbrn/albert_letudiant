@@ -77,6 +77,27 @@ function normalizeText(value) {
   return String(value ?? "").trim();
 }
 
+/** Si la colonne CSV type_etablissement est absente, deduit un libelle depuis le nom d'ecole. */
+function inferTypeEtablissementFromSchool(schoolName) {
+  const s = normalizeText(schoolName).toLowerCase();
+  if (!s) return "";
+  if (s.includes("lyc") || s.includes("condorcet") || s.includes("henri")) return "Lycée";
+  if (s.includes("univ") || s.includes("saclay") || s.includes("sorbonne") || s.includes("paris-")) {
+    return "Université";
+  }
+  if (s.includes("hec") || s.includes("essec") || s.includes("escp") || s.includes("commerce")) {
+    return "École de commerce";
+  }
+  if (s.includes("insa") || s.includes("centrale") || s.includes("polytechnique") || s.includes("mines")) {
+    return "École d'ingénieur";
+  }
+  if (s.includes("iut")) return "IUT";
+  if (s.includes("bts")) return "BTS";
+  if (s.includes("epitech") || s.includes("ensa")) return "Établissement supérieur";
+  if (s.includes("collège") || s.includes("college")) return "Collège";
+  return "Autre";
+}
+
 function stringifyValue(value) {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) return value.join(", ");
@@ -183,6 +204,15 @@ async function ensureGraphConstraints(session) {
   await session.run(
     "CREATE CONSTRAINT city_name_unique IF NOT EXISTS FOR (c:City) REQUIRE c.name IS UNIQUE",
   );
+  await session.run(
+    "CREATE CONSTRAINT sourcelead_name_unique IF NOT EXISTS FOR (sl:SourceLead) REQUIRE sl.name IS UNIQUE",
+  );
+  await session.run(
+    "CREATE CONSTRAINT niveauscolaire_name_unique IF NOT EXISTS FOR (n:NiveauScolaire) REQUIRE n.name IS UNIQUE",
+  );
+  await session.run(
+    "CREATE CONSTRAINT typeetablissement_name_unique IF NOT EXISTS FOR (t:TypeEtablissement) REQUIRE t.name IS UNIQUE",
+  );
 }
 
 async function importStudents(session, studentsPath, batchSize, limit) {
@@ -193,6 +223,9 @@ async function importStudents(session, studentsPath, batchSize, limit) {
       const school = normalizeText(row.ecole_actuelle || row.nom_etablissement);
       if (!email || !school) return null;
 
+      const rawType = normalizeText(row.type_etablissement);
+      const typeEtablissement = rawType || inferTypeEtablissementFromSchool(school);
+
       return {
         id: normalizeText(row.id),
         prenom: normalizeText(row.prenom),
@@ -201,6 +234,10 @@ async function importStudents(session, studentsPath, batchSize, limit) {
         ville: normalizeText(row.ville),
         niveauActuel: normalizeText(row.niveau_actuel),
         school,
+        sourceLead: normalizeText(row.source_lead),
+        dateInscription: normalizeText(row.date_inscription),
+        tel: normalizeText(row.tel),
+        typeEtablissement,
       };
     },
     batchSize,
@@ -214,15 +251,48 @@ async function importStudents(session, studentsPath, batchSize, limit) {
           student.prenom = row.prenom,
           student.nom = row.nom,
           student.name = trim(row.prenom + " " + row.nom),
-          student.niveau_actuel = row.niveauActuel
+          student.niveau_actuel = row.niveauActuel,
+          student.source_lead = row.sourceLead,
+          student.date_inscription = row.dateInscription,
+          student.tel = row.tel
         MERGE (city:City {name: row.ville})
         MERGE (school:School {name: row.school})
         MERGE (student)-[:LIVES_IN]->(city)
         MERGE (student)-[:STUDIES_AT]->(school)
         MERGE (student)-[:INTERESTED_IN]->(school)
+        MERGE (niv:NiveauScolaire {name: row.niveauActuel})
+        MERGE (student)-[:HAS_NIVEAU]->(niv)
         `,
         { rows },
       );
+
+      const withSource = rows.filter((r) => normalizeText(r.sourceLead));
+      if (withSource.length > 0) {
+        await session.run(
+          `
+          UNWIND $rows AS row
+          MATCH (student:Student {email: row.email})
+          MERGE (sl:SourceLead {name: row.sourceLead})
+          MERGE (student)-[:DISCOVERED_VIA]->(sl)
+          `,
+          { rows: withSource },
+        );
+      }
+
+      const withType = rows.filter((r) => normalizeText(r.typeEtablissement));
+      if (withType.length > 0) {
+        await session.run(
+          `
+          UNWIND $rows AS row
+          MATCH (student:Student {email: row.email})
+          MATCH (school:School {name: row.school})
+          MERGE (tt:TypeEtablissement {name: row.typeEtablissement})
+          MERGE (student)-[:HAS_TYPE_ETABLISSEMENT]->(tt)
+          MERGE (school)-[:CATEGORIZED_AS]->(tt)
+          `,
+          { rows: withType },
+        );
+      }
     },
     limit,
   );

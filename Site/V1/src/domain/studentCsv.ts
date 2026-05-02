@@ -20,6 +20,9 @@ export function parseStudentCsvRow(headerLine: string, dataLine: string): Studen
     );
   }
 
+  const hasTypeEtabCol = headers[headers.length - 1]?.trim() === "type_etablissement";
+  const gradeEnd = hasTypeEtabCol ? headers.length - 1 : headers.length;
+
   const identity: StudentLeadIdentity = {
     id: Number(cells[0]),
     date_inscription: cells[1],
@@ -31,6 +34,7 @@ export function parseStudentCsvRow(headerLine: string, dataLine: string): Studen
     ecole_actuelle: cells[7],
     email: cells[8],
     tel: cells[9],
+    ...(hasTypeEtabCol ? { type_etablissement: (cells[cells.length - 1] ?? "").trim() } : {}),
   };
 
   if (!Number.isFinite(identity.id)) {
@@ -38,7 +42,7 @@ export function parseStudentCsvRow(headerLine: string, dataLine: string): Studen
   }
 
   const grades: StudentLeadGrades = {};
-  for (let i = 10; i < headers.length; i++) {
+  for (let i = 10; i < gradeEnd; i++) {
     const key = headers[i];
     if (!key) continue;
     grades[key] = parseGradeCell(cells[i] ?? "");

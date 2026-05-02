@@ -84,6 +84,11 @@ def generate_student_leads(n=300000):
                     df.loc[df["niveau_actuel"].isin(["2nde", "1ère", "Terminale"]), col_name] = np.nan
                 # ... (Répéter la logique pour L2, L3, M1, M2)
 
+    # Derniere colonne (hors notes) pour le graphe Neo4j / import
+    df["type_etablissement"] = np.random.choice(types_etablissement, n)
+    if len(df) > 0:
+        df.loc[0, "type_etablissement"] = "Architecture"
+
     out_dir = Path(__file__).resolve().parent.parent / "Résultats"
     out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = out_dir / "database_etudiants_300k.csv"

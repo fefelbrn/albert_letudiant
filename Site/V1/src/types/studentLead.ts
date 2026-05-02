@@ -9,6 +9,8 @@ export type StudentLeadIdentity = {
   ecole_actuelle: string;
   email: string;
   tel: string;
+  /** Derniere colonne du CSV etudiants (apres les notes), si presente */
+  type_etablissement?: string;
 };
 
 export type StudentLeadGrades = Record<string, number | null>;

@@ -1,4 +1,12 @@
-export type GraphEntityType = "Student" | "School" | "Program" | "Ambassador" | "City";
+export type GraphEntityType =
+  | "Student"
+  | "School"
+  | "Program"
+  | "Ambassador"
+  | "City"
+  | "SourceLead"
+  | "NiveauScolaire"
+  | "TypeEtablissement";
 
 export type GraphNode = {
   id: string;

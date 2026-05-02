@@ -28,6 +28,9 @@ const nodePalette: Record<string, string> = {
   Ambassador: "#8E24AA",
   City: "#FB8C00",
   User: "#1F1F1F",
+  SourceLead: "#00897B",
+  NiveauScolaire: "#6D4C41",
+  TypeEtablissement: "#5E35B1",
 };
 
 function normalizeName(value: string) {
@@ -59,6 +62,12 @@ function getPrimaryNodeInfo(node: GraphNode) {
       return `Eleve: ${baseName}`;
     case "User":
       return `Mon profil: ${baseName}`;
+    case "SourceLead":
+      return `Source lead: ${baseName}`;
+    case "NiveauScolaire":
+      return `Niveau: ${baseName}`;
+    case "TypeEtablissement":
+      return `Type etablissement: ${baseName}`;
     default:
       return `${node.type}: ${baseName}`;
   }

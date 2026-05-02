@@ -59,7 +59,38 @@ chmod +x scripts/import-csv-to-neo4j.sh
 
 **Aura / prod:** Render n’a pas ces CSV sur disque → l’import se fait **en local** avec `NEO4J_*` dans `.env` visant Aura, puis le site en ligne lit la meme base.
 
-**Remplacer le demo `seed.cypher`:** dans Aura → Query, avant import CSV: `MATCH (n) DETACH DELETE n;` puis lance l’import ci-dessus. Le graphe Linkage utilisera alors surtout Student / School / City / Ambassador (pas de noeuds `Program` venant du seed).
+**Remplacer le demo `seed.cypher`:** dans Aura → Query, avant import CSV: `MATCH (n) DETACH DELETE n;` puis lance l’import ci-dessus. Le graphe Linkage utilisera surtout Student / School / City / Ambassador, plus des noeuds derives du CSV: **SourceLead** (`DISCOVERED_VIA`), **NiveauScolaire** (`HAS_NIVEAU`), **TypeEtablissement** (`HAS_TYPE_ETABLISSEMENT` et `School-[:CATEGORIZED_AS]->`). Sur `Student` sont aussi stockees `source_lead`, `date_inscription`, `tel`. Regenerer le CSV etudiants (`gen_students.py`) ajoute la colonne finale **`type_etablissement`** ; sans elle, le backend deduit un type depuis le nom d’ecole.
+
+**Requete Aura lisible (Léa + ville + ecole + niveau + source + type)** — apres import enrichi:
+
+```cypher
+MATCH (lea:Student)
+WHERE toLower(trim(lea.nom)) = 'petit'
+  AND (toLower(trim(lea.prenom)) IN ['léa', 'lea'] OR toLower(trim(lea.email)) CONTAINS 'petit')
+WITH lea LIMIT 1
+OPTIONAL MATCH p0 = (lea)-[:LIVES_IN]->(:City)
+MATCH p1 = (lea)-[:STUDIES_AT]->(sch:School)
+OPTIONAL MATCH p2 = (lea)-[:HAS_NIVEAU]->(:NiveauScolaire)
+OPTIONAL MATCH p3 = (lea)-[:DISCOVERED_VIA]->(:SourceLead)
+OPTIONAL MATCH p4 = (lea)-[:HAS_TYPE_ETABLISSEMENT]->(tt:TypeEtablissement)
+OPTIONAL MATCH p5 = (sch)-[:CATEGORIZED_AS]->(tt)
+RETURN p0, p1, p2, p3, p4, p5;
+```
+
+Quelques camarades de la meme ecole (borne):
+
+```cypher
+MATCH (lea:Student)-[:STUDIES_AT]->(sch:School)
+WHERE toLower(trim(lea.nom)) = 'petit'
+  AND (toLower(trim(lea.prenom)) IN ['léa', 'lea'] OR toLower(trim(lea.email)) CONTAINS 'petit')
+WITH lea, sch LIMIT 1
+MATCH p = (peer:Student)-[:STUDIES_AT]->(sch)
+WHERE peer <> lea
+RETURN p
+LIMIT 8;
+```
+
+**Donnees deja importees sans ces relations ?** Relance `POST /api/linkage/import` (meme CSV) ou execute en Query des `MERGE` analogues a partir des proprietes `Student` si tu les as remplies a l’import manuel.
 
 Options utiles dans le body JSON:
 - `studentsPath` / `ambassadorsPath` (chemins absolus si tu deplaces les fichiers)

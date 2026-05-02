@@ -29,27 +29,42 @@ docker exec -i linkage-neo4j cypher-shell -u neo4j -p neo4jpassword < scripts/se
 
 ## 3) Pipeline CSV -> Neo4j (recommande)
 
-1. Generer les CSV:
+Les CSV attendus (non versionnes, generes localement) sont sous `moc_data/Résultats/`:
+- `database_etudiants_300k.csv`
+- `ambassadeurs_data_heavy.csv`
+
+1. Generer les CSV (si besoin):
 
 ```bash
 python3 moc_data/scrypte/gen_students.py
 python3 moc_data/scrypte/gen_ambassadors.py
 ```
 
-2. Lancer backend puis declencher l'import:
+2. Lancer le **backend** (`cd backend && npm run dev`) avec un `backend/.env` qui pointe vers ta base (**Docker local** ou **Neo4j Aura**).
+
+3. Declencher l'import depuis **ta machine** (le serveur lit les fichiers sur disque). Le fichier etudiants fait ~300k lignes: utilise des **limites** pour eviter timeout / heures d'attente, puis augmente progressivement si besoin.
 
 ```bash
 curl -X POST http://localhost:4000/api/linkage/import \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{"studentLimit":25000,"ambassadorLimit":8000,"batchSize":2000}'
 ```
 
-Options utiles dans le body:
-- `studentsPath`
-- `ambassadorsPath`
-- `batchSize`
-- `studentLimit`
-- `ambassadorLimit`
+Ou le script (meme principe, limites modifiables via variables d'environnement):
+
+```bash
+chmod +x scripts/import-csv-to-neo4j.sh
+./scripts/import-csv-to-neo4j.sh
+```
+
+**Aura / prod:** Render n’a pas ces CSV sur disque → l’import se fait **en local** avec `NEO4J_*` dans `.env` visant Aura, puis le site en ligne lit la meme base.
+
+**Remplacer le demo `seed.cypher`:** dans Aura → Query, avant import CSV: `MATCH (n) DETACH DELETE n;` puis lance l’import ci-dessus. Le graphe Linkage utilisera alors surtout Student / School / City / Ambassador (pas de noeuds `Program` venant du seed).
+
+Options utiles dans le body JSON:
+- `studentsPath` / `ambassadorsPath` (chemins absolus si tu deplaces les fichiers)
+- `batchSize` (defaut 2000 via `.env`)
+- `studentLimit` / `ambassadorLimit` (tronque le nombre de lignes lues par fichier)
 
 ## 4) Lancer le backend Linkage
 

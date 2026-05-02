@@ -345,11 +345,13 @@ app.post("/api/linkage/import", async (req, res) => {
 app.get("/api/linkage/graph", async (req, res) => {
   const session = driver.session(neo4jSessionConfig(neo4j.session.READ));
 
-  const maxDepth = Math.max(1, Math.min(GRAPH_LIMITS.maxDepth, Number(req.query.maxDepth ?? 1)));
+  const maxDepth = Math.max(1, Math.min(GRAPH_LIMITS.maxDepth, Number(req.query.maxDepth ?? 2)));
   const maxEdges = Math.max(15, Math.min(GRAPH_LIMITS.maxEdges, Number(req.query.maxEdges ?? 120)));
   const maxNodes = Math.max(24, Math.min(GRAPH_LIMITS.maxNodes, Number(req.query.maxNodes ?? 72)));
   const centerEmail = normalizeText(req.query.centerEmail).toLowerCase() || null;
   const centerStudentId = normalizeText(req.query.centerStudentId) || null;
+  const centerPrenom = normalizeText(req.query.centerPrenom).toLowerCase() || null;
+  const centerNom = normalizeText(req.query.centerNom).toLowerCase() || null;
   const typesQuery = normalizeText(req.query.types);
   const relationshipTypes = typesQuery
     ? typesQuery.split(",").map((value) => normalizeText(value)).filter(Boolean)
@@ -360,12 +362,17 @@ app.get("/api/linkage/graph", async (req, res) => {
       `
       MATCH (s:Student)
       WHERE
-        ($centerEmail IS NOT NULL AND toLower(s.email) = $centerEmail)
+        ($centerEmail IS NOT NULL AND toLower(trim(s.email)) = $centerEmail)
         OR ($centerStudentId IS NOT NULL AND s.id = $centerStudentId)
+        OR (
+          $centerPrenom IS NOT NULL AND $centerNom IS NOT NULL
+          AND toLower(trim(s.prenom)) = $centerPrenom
+          AND toLower(trim(s.nom)) = $centerNom
+        )
       RETURN s
       LIMIT 1
       `,
-      { centerEmail, centerStudentId },
+      { centerEmail, centerStudentId, centerPrenom, centerNom },
     );
 
     let centerNode = centerResult.records[0]?.get("s");

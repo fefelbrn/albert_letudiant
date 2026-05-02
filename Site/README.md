@@ -79,7 +79,8 @@ API sante: <http://localhost:4000/api/health>
 API graph: <http://localhost:4000/api/linkage/graph>
 
 Le endpoint graph supporte:
-- `centerEmail`
+- `centerEmail` (prioritaire si present dans Neo4j)
+- `centerPrenom` + `centerNom` (minuscules, compares a `Student.prenom` / `Student.nom` si pas d’email)
 - `centerStudentId`
 - `maxDepth` (1..3) — sur gros volumes, preferer 1
 - `maxEdges` (15..400) — borne les relations analysees avant rendu
@@ -89,7 +90,7 @@ Le endpoint graph supporte:
 Exemple:
 
 ```bash
-http://localhost:4000/api/linkage/graph?centerEmail=arthur.durand1@mail.fr&maxDepth=1&maxEdges=120&maxNodes=72
+http://localhost:4000/api/linkage/graph?centerEmail=l%C3%A9a.petit2%40mail.fr&maxDepth=2&maxEdges=120&maxNodes=72
 ```
 
 ## 5) Lancer le frontend

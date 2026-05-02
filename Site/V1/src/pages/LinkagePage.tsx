@@ -71,7 +71,7 @@ export function LinkagePage() {
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [activeTypes, setActiveTypes] = useState<string[]>([]);
   const [maxEdges, setMaxEdges] = useState(120);
-  const [maxDepth, setMaxDepth] = useState(1);
+  const [maxDepth, setMaxDepth] = useState(2);
   const [maxNodes, setMaxNodes] = useState(72);
   const [requestVersion, setRequestVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +86,9 @@ export function LinkagePage() {
         setLoading(true);
         setError(null);
         const query = new URLSearchParams({
-          centerEmail: profile.email || "",
+          centerEmail: (profile.email || "").trim().toLowerCase(),
+          centerPrenom: (profile.prenom || "").trim().toLowerCase(),
+          centerNom: (profile.nom || "").trim().toLowerCase(),
           maxEdges: String(maxEdges),
           maxDepth: String(maxDepth),
           maxNodes: String(maxNodes),
@@ -124,7 +126,7 @@ export function LinkagePage() {
 
     void loadGraph();
     return () => controller.abort();
-  }, [maxDepth, maxEdges, maxNodes, profile.email, requestVersion]);
+  }, [maxDepth, maxEdges, maxNodes, profile.email, profile.nom, profile.prenom, requestVersion]);
 
   const graphWithUser = useMemo(() => {
     const fullName = `${profile.prenom} ${profile.nom}`.trim();
@@ -179,6 +181,30 @@ export function LinkagePage() {
       properties: {},
     }));
 
+    const profileMail = (profile.email || "").trim().toLowerCase();
+    const profileFirst = (profile.prenom || "").trim().toLowerCase();
+    const profileLast = (profile.nom || "").trim().toLowerCase();
+    const mirroredStudent = graph.nodes.find((n) => {
+      if (n.type !== "Student") return false;
+      const em = String(n.properties.email ?? "").trim().toLowerCase();
+      if (profileMail && em === profileMail) return true;
+      const p = String(n.properties.prenom ?? "").trim().toLowerCase();
+      const nom = String(n.properties.nom ?? "").trim().toLowerCase();
+      return profileFirst !== "" && profileLast !== "" && p === profileFirst && nom === profileLast;
+    });
+
+    const profileMirrorEdges = mirroredStudent
+      ? [
+          {
+            id: "user-profile-as-student",
+            source: userNode.id,
+            target: mirroredStudent.id,
+            type: "PROFIL_COMPTE",
+            properties: {},
+          },
+        ]
+      : [];
+
     const ambassadorById = new Map(
       graph.nodes.filter((node) => node.type === "Ambassador").map((node) => [node.id, node]),
     );
@@ -208,7 +234,7 @@ export function LinkagePage() {
 
     return {
       nodes: [userNode, ...graph.nodes],
-      edges: [...graph.edges, ...userLinks, ...ambassadorLinks],
+      edges: [...graph.edges, ...userLinks, ...ambassadorLinks, ...profileMirrorEdges],
     };
   }, [graph.edges, graph.nodes, profile]);
 
@@ -311,8 +337,8 @@ export function LinkagePage() {
                 value={maxDepth}
                 onChange={(event) => setMaxDepth(Number(event.target.value))}
               >
-                <option value={1}>1 saut (recommande gros volumes)</option>
-                <option value={2}>2 sauts</option>
+                <option value={1}>1 saut (gros volumes)</option>
+                <option value={2}>2 sauts (defaut compte)</option>
                 <option value={3}>3 sauts</option>
               </select>
               <button type="button" className="btn btn-soft" onClick={() => setRequestVersion((v) => v + 1)}>
@@ -332,8 +358,9 @@ export function LinkagePage() {
               ))}
             </div>
             <p className="linkage-hint">
-              Astuce: glisse un noeud pour le repositionner. Gros volumes: profondeur 1 saut et moins de relations
-              analysees = chargement plus rapide et graphe plus lisible.
+              Le graphe part du compte connecte (email ou prenom + nom) dans Neo4j, puis etend la profondeur choisie.
+              Astuce: glisse un noeud pour le repositionner. Si c&apos;est lent ou illisible, passe a 1 saut ou baisse
+              max relations / max noeuds.
             </p>
             {graph.meta?.truncated ? (
               <p className="linkage-warning">
@@ -393,10 +420,12 @@ export function LinkagePage() {
                 linkLabel={(link) => (link as LinkObject).type}
                 linkWidth={(link) => {
                   const type = (link as LinkObject).type;
+                  if (type === "PROFIL_COMPTE") return 3.2;
                   return type === "FOLLOWS" || type === "CONNECTED_TO_AMBASSADOR" ? 2.8 : 1.2;
                 }}
                 linkColor={(link) => {
                   const type = (link as LinkObject).type;
+                  if (type === "PROFIL_COMPTE") return "#b71c5c";
                   return type === "FOLLOWS" || type === "CONNECTED_TO_AMBASSADOR"
                     ? "#d5153f"
                     : "#cfd4dd";

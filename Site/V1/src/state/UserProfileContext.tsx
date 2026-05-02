@@ -13,24 +13,6 @@ const STORAGE_KEY = "v1_user_profile";
 
 function defaultsFromCanonical(): UserProfile {
   const c = canonicalStudentLead;
-  const isLegacyLeaProfile =
-    c.prenom.trim().toLowerCase() === "léa" && c.nom.trim().toLowerCase() === "petit";
-
-  if (isLegacyLeaProfile) {
-    return {
-      ...emptyUserProfile(),
-      prenom: "Thomas",
-      nom: "Bernard",
-      age: "20",
-      niveau_scolaire: "Bac+3",
-      ville: "Toulouse",
-      email: "thomas.bernard1@etudiant.fr",
-      telephone: "0639397519",
-      etablissement_actuel: "ENSA Lyon",
-      etablissements_favoris: ["HEC", "ESSEC", "ESCP"],
-    };
-  }
-
   return {
     ...emptyUserProfile(),
     prenom: c.prenom,
@@ -40,6 +22,9 @@ function defaultsFromCanonical(): UserProfile {
     email: c.email,
     telephone: c.tel,
     etablissement_actuel: c.ecole_actuelle,
+    etablissements_favoris: Array.from(
+      new Set([c.ecole_actuelle, "HEC Paris", "ESSEC", "ESCP"].filter((x) => String(x ?? "").trim() !== "")),
+    ),
   };
 }
 

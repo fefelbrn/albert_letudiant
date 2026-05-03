@@ -96,6 +96,24 @@ Options utiles dans le body JSON:
 - `studentsPath` / `ambassadorsPath` (chemins absolus si tu deplaces les fichiers)
 - `batchSize` (defaut 2000 via `.env`)
 - `studentLimit` / `ambassadorLimit` (tronque le nombre de lignes lues par fichier)
+- `skipStudentImport` / `skipAmbassadorImport` (bool) — n’importe qu’un des deux CSV
+- `skipLinkStudentsToAmbassadors` (bool) — ne crée pas les arêtes `CONNECTED_TO` (souvent **énormes** sur gros volume d’étudiants)
+
+**Neo4j Aura (petit tier) — plafond ~400k relations:** si l’import échoue avec *exceeded the logical size limit of 400000 relationships*, la base est pleine. Refaire un import **étudiants + liaison** ajoute des dizaines de milliers de relations (`CONNECTED_TO` surtout). Pistes: **monter de tier**, ou **`MATCH (n) DETACH DELETE n`** puis réimporter avec des **limites plus basses**, ou **ne réimporter que les ambassadeurs** sans retoucher les étudiants ni les liaisons:
+
+```bash
+cd backend && node scripts/run-linkage-import.js --skip-students --ambassadors 1200 --skip-link
+```
+
+Il faut encore **quelques milliers de relations libres** pour ~1000 ambassadeurs (~2 relations chacun). Si tu es déjà à ~398k/400k, libère de la place avant, par exemple en supprimant les `INTERESTED_IN` redondants avec `STUDIES_AT` vers la **même** école (cas du pipeline actuel) :
+
+```cypher
+MATCH (s:Student)-[:STUDIES_AT]->(sch:School)
+MATCH (s)-[i:INTERESTED_IN]->(sch)
+DELETE i;
+```
+
+Puis relance la commande `--skip-students` ci-dessus. Les requêtes métier « même école que l’ambassadeur » passent toujours par `(Student)-[:STUDIES_AT]->(School)<-[:STUDIED_AT]-(Ambassador)` sans `CONNECTED_TO`.
 
 ## 4) Lancer le backend Linkage
 
@@ -117,12 +135,21 @@ Le endpoint graph supporte:
 - `maxEdges` (15..400) — borne les relations analysees avant rendu
 - `maxNodes` (24..96) — plafond de noeuds renvoyes (priorite ecoles/villes puis echantillon d’eleves)
 - `types` (CSV des types de relation)
+- `includeAmbassadors` (`1` / `true`) — ajoute toujours les ambassadeurs des écoles où le centre est en `STUDIES_AT` ou `INTERESTED_IN` (évite qu’ils soient coupés par `maxEdges` sur gros graphes)
 
 Exemple:
 
 ```bash
 http://localhost:4000/api/linkage/graph?centerEmail=l%C3%A9a.petit2%40mail.fr&maxDepth=2&maxEdges=120&maxNodes=72
 ```
+
+Léo (HEC) + ambassadeurs fusionnés côté API :
+
+```bash
+http://localhost:4000/api/linkage/graph?centerEmail=l%C3%A9o.martin114%40mail.fr&maxDepth=2&maxEdges=200&maxNodes=96&includeAmbassadors=1
+```
+
+Même chose dans le front : `/linkage?centerEmail=léo.martin114@mail.fr&includeAmbassadors=1` (adapter l’encodage si besoin).
 
 ## 5) Lancer le frontend
 
@@ -135,6 +162,8 @@ npm run dev
 ```
 
 Frontend: <http://localhost:5173>
+
+Compte demo simulateur (login) : **`léo.martin114@mail.fr`** / **`motdepasse`** — profil et notes alignés sur le POC Neo4j (Léo Martin, HEC).
 
 L'onglet `Linkage` est disponible dans la navbar.
 

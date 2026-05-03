@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "import:linkage": "node scripts/run-linkage-import.js",
     "test": "echo \"No tests configured\""
   },
   "keywords": [],

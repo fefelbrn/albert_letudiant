@@ -9,7 +9,7 @@ import {
 import { canonicalStudentLead } from "../data/canonicalStudentLead";
 import { emptyUserProfile, type UserProfile } from "../types/userProfile";
 
-const STORAGE_KEY = "v1_user_profile";
+const STORAGE_KEY = "v1_user_profile_leo_poc";
 
 function defaultsFromCanonical(): UserProfile {
   const c = canonicalStudentLead;
@@ -23,7 +23,9 @@ function defaultsFromCanonical(): UserProfile {
     telephone: c.tel,
     etablissement_actuel: c.ecole_actuelle,
     etablissements_favoris: Array.from(
-      new Set([c.ecole_actuelle, "HEC Paris", "ESSEC", "ESCP"].filter((x) => String(x ?? "").trim() !== "")),
+      new Set(
+        [c.ecole_actuelle, "ESSEC", "ESCP", "EDHEC"].filter((x) => String(x ?? "").trim() !== ""),
+      ),
     ),
   };
 }

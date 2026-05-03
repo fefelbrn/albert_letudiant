@@ -16,9 +16,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PORT="${PORT:-4000}"
-STUDENT_LIMIT="${STUDENT_LIMIT:-25000}"
-AMBASSADOR_LIMIT="${AMBASSADOR_LIMIT:-8000}"
-BATCH_SIZE="${BATCH_SIZE:-2000}"
+STUDENT_LIMIT="${STUDENT_LIMIT:-50000}"
+AMBASSADOR_LIMIT="${AMBASSADOR_LIMIT:-10000}"
+BATCH_SIZE="${BATCH_SIZE:-10000}"
 
 echo "-> POST http://localhost:${PORT}/api/linkage/import"
 echo "   studentLimit=${STUDENT_LIMIT} ambassadorLimit=${AMBASSADOR_LIMIT} batchSize=${BATCH_SIZE}"

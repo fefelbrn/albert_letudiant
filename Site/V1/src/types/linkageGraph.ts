@@ -38,5 +38,7 @@ export type GraphResponse = {
     maxNodes?: number;
     relationshipTypes?: string[];
     centerFallbackUsed?: boolean;
+    includeAmbassadors?: boolean;
+    ambassadorsMerged?: number;
   };
 };

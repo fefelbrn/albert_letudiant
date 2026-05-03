@@ -1,12 +1,12 @@
-const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const neo4j = require("neo4j-driver");
-const csvParser = require("csv-parser");
 
 dotenv.config();
+
+const { normalizeText, runLinkageImport } = require("./linkageImport");
 
 /** Trim, strip accidental wrapping quotes (common in dashboards), treat blank as unset. */
 function sanitizeEnvString(value) {
@@ -73,31 +73,6 @@ try {
   process.exit(1);
 }
 
-function normalizeText(value) {
-  return String(value ?? "").trim();
-}
-
-/** Si la colonne CSV type_etablissement est absente, deduit un libelle depuis le nom d'ecole. */
-function inferTypeEtablissementFromSchool(schoolName) {
-  const s = normalizeText(schoolName).toLowerCase();
-  if (!s) return "";
-  if (s.includes("lyc") || s.includes("condorcet") || s.includes("henri")) return "Lycée";
-  if (s.includes("univ") || s.includes("saclay") || s.includes("sorbonne") || s.includes("paris-")) {
-    return "Université";
-  }
-  if (s.includes("hec") || s.includes("essec") || s.includes("escp") || s.includes("commerce")) {
-    return "École de commerce";
-  }
-  if (s.includes("insa") || s.includes("centrale") || s.includes("polytechnique") || s.includes("mines")) {
-    return "École d'ingénieur";
-  }
-  if (s.includes("iut")) return "IUT";
-  if (s.includes("bts")) return "BTS";
-  if (s.includes("epitech") || s.includes("ensa")) return "Établissement supérieur";
-  if (s.includes("collège") || s.includes("college")) return "Collège";
-  return "Autre";
-}
-
 function stringifyValue(value) {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) return value.join(", ");
@@ -132,6 +107,51 @@ function graphPrimaryLabel(node) {
   return node.labels && node.labels[0] ? node.labels[0] : "Unknown";
 }
 
+function truthyQueryParam(value) {
+  const v = normalizeText(value).toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/** Fusionne ambassadeurs (même école que le centre) + leurs liens STUDIED_AT / LIVES_IN / CONNECTED_TO. */
+async function mergeAmbassadorsForCenter(session, centerElementId, uniqueNodes, uniqueEdges) {
+  const ambRes = await session.run(
+    `
+    MATCH (center:Student) WHERE elementId(center) = $centerElementId
+    MATCH (center)-[:STUDIES_AT|INTERESTED_IN]->(sch:School)<-[:STUDIED_AT]-(amb:Ambassador)
+    MATCH (amb)-[st:STUDIED_AT]->(sch)
+    OPTIONAL MATCH (amb)-[lv:LIVES_IN]->(:City)
+    OPTIONAL MATCH (center)-[ct:CONNECTED_TO]->(amb)
+    RETURN collect(DISTINCT amb) AS ambassadors,
+           collect(DISTINCT st) AS studiedRels,
+           collect(DISTINCT lv) AS livedRels,
+           collect(DISTINCT ct) AS connRels
+    `,
+    { centerElementId },
+  );
+  if (ambRes.records.length === 0) {
+    return { nodes: uniqueNodes, edges: uniqueEdges, ambassadorCount: 0 };
+  }
+  const rec = ambRes.records[0];
+  const ambassadors = (rec.get("ambassadors") || []).filter(Boolean);
+  const studiedRels = (rec.get("studiedRels") || []).filter(Boolean);
+  const livedRels = (rec.get("livedRels") || []).filter(Boolean);
+  const connRels = (rec.get("connRels") || []).filter(Boolean);
+
+  const nodeMap = new Map(uniqueNodes.map((n) => [n.elementId, n]));
+  for (const n of ambassadors) {
+    nodeMap.set(n.elementId, n);
+  }
+  const edgeMap = new Map(uniqueEdges.map((e) => [e.elementId, e]));
+  for (const r of [...studiedRels, ...livedRels, ...connRels]) {
+    edgeMap.set(r.elementId, r);
+  }
+  return {
+    nodes: [...nodeMap.values()],
+    edges: [...edgeMap.values()],
+    ambassadorCount: ambassadors.length,
+  };
+}
+
 /** Limite le nombre de noeuds (surtout Student) pour graphes lisibles sur gros volumes. */
 function capGraphPayload(centerElementId, uniqueNodes, uniqueEdges, maxNodes) {
   if (uniqueNodes.length <= maxNodes) {
@@ -159,206 +179,11 @@ function capGraphPayload(centerElementId, uniqueNodes, uniqueEdges, maxNodes) {
   return { nodes: keptNodes, edges: keptEdges, truncatedNodes: true };
 }
 
-async function runInBatches(filePath, mapper, batchSize, callback, limit) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`CSV introuvable: ${filePath}`);
-  }
-
-  let imported = 0;
-  let rawRows = 0;
-  let batch = [];
-  const stream = fs.createReadStream(filePath).pipe(csvParser());
-
-  for await (const row of stream) {
-    rawRows += 1;
-    if (typeof limit === "number" && rawRows > limit) break;
-    const mapped = mapper(row);
-    if (!mapped) continue;
-
-    batch.push(mapped);
-    if (batch.length >= batchSize) {
-      await callback(batch);
-      imported += batch.length;
-      batch = [];
-    }
-  }
-
-  if (batch.length > 0) {
-    await callback(batch);
-    imported += batch.length;
-  }
-
-  return { imported, rawRows: typeof limit === "number" ? Math.min(rawRows, limit) : rawRows };
-}
-
-async function ensureGraphConstraints(session) {
-  await session.run(
-    "CREATE CONSTRAINT student_email_unique IF NOT EXISTS FOR (s:Student) REQUIRE s.email IS UNIQUE",
-  );
-  await session.run(
-    "CREATE CONSTRAINT ambassador_email_unique IF NOT EXISTS FOR (a:Ambassador) REQUIRE a.email IS UNIQUE",
-  );
-  await session.run(
-    "CREATE CONSTRAINT school_name_unique IF NOT EXISTS FOR (s:School) REQUIRE s.name IS UNIQUE",
-  );
-  await session.run(
-    "CREATE CONSTRAINT city_name_unique IF NOT EXISTS FOR (c:City) REQUIRE c.name IS UNIQUE",
-  );
-  await session.run(
-    "CREATE CONSTRAINT sourcelead_name_unique IF NOT EXISTS FOR (sl:SourceLead) REQUIRE sl.name IS UNIQUE",
-  );
-  await session.run(
-    "CREATE CONSTRAINT niveauscolaire_name_unique IF NOT EXISTS FOR (n:NiveauScolaire) REQUIRE n.name IS UNIQUE",
-  );
-  await session.run(
-    "CREATE CONSTRAINT typeetablissement_name_unique IF NOT EXISTS FOR (t:TypeEtablissement) REQUIRE t.name IS UNIQUE",
-  );
-}
-
-async function importStudents(session, studentsPath, batchSize, limit) {
-  return runInBatches(
-    studentsPath,
-    (row) => {
-      const email = normalizeText(row.email).toLowerCase();
-      const school = normalizeText(row.ecole_actuelle || row.nom_etablissement);
-      if (!email || !school) return null;
-
-      const rawType = normalizeText(row.type_etablissement);
-      const typeEtablissement = rawType || inferTypeEtablissementFromSchool(school);
-
-      return {
-        id: normalizeText(row.id),
-        prenom: normalizeText(row.prenom),
-        nom: normalizeText(row.nom),
-        email,
-        ville: normalizeText(row.ville),
-        niveauActuel: normalizeText(row.niveau_actuel),
-        school,
-        sourceLead: normalizeText(row.source_lead),
-        dateInscription: normalizeText(row.date_inscription),
-        tel: normalizeText(row.tel),
-        typeEtablissement,
-      };
-    },
-    batchSize,
-    async (rows) => {
-      await session.run(
-        `
-        UNWIND $rows AS row
-        MERGE (student:Student {email: row.email})
-          ON CREATE SET student.id = row.id
-        SET
-          student.prenom = row.prenom,
-          student.nom = row.nom,
-          student.name = trim(row.prenom + " " + row.nom),
-          student.niveau_actuel = row.niveauActuel,
-          student.source_lead = row.sourceLead,
-          student.date_inscription = row.dateInscription,
-          student.tel = row.tel
-        MERGE (city:City {name: row.ville})
-        MERGE (school:School {name: row.school})
-        MERGE (student)-[:LIVES_IN]->(city)
-        MERGE (student)-[:STUDIES_AT]->(school)
-        MERGE (student)-[:INTERESTED_IN]->(school)
-        MERGE (niv:NiveauScolaire {name: row.niveauActuel})
-        MERGE (student)-[:HAS_NIVEAU]->(niv)
-        `,
-        { rows },
-      );
-
-      const withSource = rows.filter((r) => normalizeText(r.sourceLead));
-      if (withSource.length > 0) {
-        await session.run(
-          `
-          UNWIND $rows AS row
-          MATCH (student:Student {email: row.email})
-          MERGE (sl:SourceLead {name: row.sourceLead})
-          MERGE (student)-[:DISCOVERED_VIA]->(sl)
-          `,
-          { rows: withSource },
-        );
-      }
-
-      const withType = rows.filter((r) => normalizeText(r.typeEtablissement));
-      if (withType.length > 0) {
-        await session.run(
-          `
-          UNWIND $rows AS row
-          MATCH (student:Student {email: row.email})
-          MATCH (school:School {name: row.school})
-          MERGE (tt:TypeEtablissement {name: row.typeEtablissement})
-          MERGE (student)-[:HAS_TYPE_ETABLISSEMENT]->(tt)
-          MERGE (school)-[:CATEGORIZED_AS]->(tt)
-          `,
-          { rows: withType },
-        );
-      }
-    },
-    limit,
-  );
-}
-
-async function importAmbassadors(session, ambassadorsPath, batchSize, limit) {
-  return runInBatches(
-    ambassadorsPath,
-    (row) => {
-      const email = normalizeText(row.email).toLowerCase();
-      const school = normalizeText(row.nom_etablissement || row.ecole_actuelle);
-      if (!email || !school) return null;
-
-      return {
-        id: normalizeText(row.id),
-        prenom: normalizeText(row.prenom),
-        nom: normalizeText(row.nom),
-        email,
-        ville: normalizeText(row.ville),
-        niveauActuel: normalizeText(row.niveau_actuel),
-        school,
-      };
-    },
-    batchSize,
-    async (rows) => {
-      await session.run(
-        `
-        UNWIND $rows AS row
-        MERGE (ambassador:Ambassador {email: row.email})
-          ON CREATE SET ambassador.id = row.id
-        SET
-          ambassador.prenom = row.prenom,
-          ambassador.nom = row.nom,
-          ambassador.name = trim(row.prenom + " " + row.nom),
-          ambassador.niveau_actuel = row.niveauActuel
-        MERGE (city:City {name: row.ville})
-        MERGE (school:School {name: row.school})
-        MERGE (ambassador)-[:LIVES_IN]->(city)
-        MERGE (ambassador)-[:STUDIED_AT]->(school)
-        `,
-        { rows },
-      );
-    },
-    limit,
-  );
-}
-
-async function linkStudentsToAmbassadors(session) {
-  await session.run(
-    `
-    MATCH (student:Student)-[:STUDIES_AT]->(school:School)<-[:STUDIED_AT]-(ambassador:Ambassador)
-    WITH student, collect(ambassador)[0..4] AS ambassadors
-    UNWIND ambassadors AS ambassador
-    MERGE (student)-[:CONNECTED_TO]->(ambassador)
-    `,
-  );
-}
-
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "linkage-backend" });
 });
 
 app.post("/api/linkage/import", async (req, res) => {
-  const session = driver.session(neo4jSessionConfig(neo4j.session.WRITE));
-  const startedAt = Date.now();
-
   const studentsPath = req.body?.studentsPath
     ? path.resolve(req.body.studentsPath)
     : CSV_STUDENTS_PATH;
@@ -368,47 +193,30 @@ app.post("/api/linkage/import", async (req, res) => {
   const batchSize = Number(req.body?.batchSize ?? IMPORT_BATCH_SIZE);
   const studentLimit = req.body?.studentLimit ? Number(req.body.studentLimit) : undefined;
   const ambassadorLimit = req.body?.ambassadorLimit ? Number(req.body.ambassadorLimit) : undefined;
+  const wipeGraph = Boolean(req.body?.wipeGraph);
+  const skipStudentImport = Boolean(req.body?.skipStudentImport);
+  const skipAmbassadorImport = Boolean(req.body?.skipAmbassadorImport);
+  const skipLinkStudentsToAmbassadors = Boolean(req.body?.skipLinkStudentsToAmbassadors);
 
   try {
-    await ensureGraphConstraints(session);
-
-    const studentStats = await importStudents(
-      session,
-      studentsPath,
-      Math.max(100, batchSize),
-      Number.isFinite(studentLimit) ? studentLimit : undefined,
-    );
-    const ambassadorStats = await importAmbassadors(
-      session,
-      ambassadorsPath,
-      Math.max(100, batchSize),
-      Number.isFinite(ambassadorLimit) ? ambassadorLimit : undefined,
-    );
-    await linkStudentsToAmbassadors(session);
-
-    const durationMs = Date.now() - startedAt;
-    return res.json({
-      ok: true,
-      durationMs,
+    const payload = await runLinkageImport(driver, neo4jSessionConfig, {
       studentsPath,
       ambassadorsPath,
-      imported: {
-        students: studentStats.imported,
-        ambassadors: ambassadorStats.imported,
-      },
-      rawRowsRead: {
-        students: studentStats.rawRows,
-        ambassadors: ambassadorStats.rawRows,
-      },
+      batchSize,
+      studentLimit: Number.isFinite(studentLimit) ? studentLimit : undefined,
+      ambassadorLimit: Number.isFinite(ambassadorLimit) ? ambassadorLimit : undefined,
+      wipeGraph,
+      skipStudentImport,
+      skipAmbassadorImport,
+      skipLinkStudentsToAmbassadors,
     });
+    return res.json(payload);
   } catch (error) {
     return res.status(500).json({
       ok: false,
       message: "Echec de l'import CSV vers Neo4j.",
       details: error instanceof Error ? error.message : "Unknown error",
     });
-  } finally {
-    await session.close();
   }
 });
 
@@ -426,6 +234,7 @@ app.get("/api/linkage/graph", async (req, res) => {
   const relationshipTypes = typesQuery
     ? typesQuery.split(",").map((value) => normalizeText(value)).filter(Boolean)
     : [];
+  const includeAmbassadors = truthyQueryParam(req.query.includeAmbassadors);
 
   try {
     const centerResult = await session.run(
@@ -513,18 +322,31 @@ app.get("/api/linkage/graph", async (req, res) => {
     );
 
     if (graphResult.records.length === 0) {
+      let soloNodes = [centerNode];
+      let soloEdges = [];
+      let soloAmbassadorCount = 0;
+      if (includeAmbassadors) {
+        const merged = await mergeAmbassadorsForCenter(session, centerNode.elementId, soloNodes, soloEdges);
+        soloNodes = merged.nodes;
+        soloEdges = merged.edges;
+        soloAmbassadorCount = merged.ambassadorCount;
+      }
+      const cappedSolo = capGraphPayload(centerNode.elementId, soloNodes, soloEdges, maxNodes);
       return res.json({
-        nodes: [mapNode(centerNode)],
-        edges: [],
+        nodes: cappedSolo.nodes.map(mapNode),
+        edges: cappedSolo.edges.map(mapRelationship),
         meta: {
           truncated: false,
-          truncatedNodes: false,
-          returnedNodes: 1,
-          returnedEdges: 0,
+          truncatedNodes: cappedSolo.truncatedNodes,
+          totalNodesBeforeCap: soloNodes.length,
+          returnedNodes: cappedSolo.nodes.length,
+          returnedEdges: cappedSolo.edges.length,
           maxDepth,
           maxEdges,
           maxNodes,
           centerFallbackUsed,
+          includeAmbassadors,
+          ambassadorsMerged: includeAmbassadors ? soloAmbassadorCount : undefined,
         },
       });
     }
@@ -534,10 +356,23 @@ app.get("/api/linkage/graph", async (req, res) => {
     const relationships = record.get("relationships");
     const totalRelations = Number(record.get("totalRelations") ?? 0);
 
-    const uniqueNodes = Array.from(new Map(nodes.map((node) => [node.elementId, node])).values());
-    const uniqueEdges = Array.from(
+    let uniqueNodes = Array.from(new Map(nodes.map((node) => [node.elementId, node])).values());
+    let uniqueEdges = Array.from(
       new Map(relationships.map((edge) => [edge.elementId, edge])).values(),
     );
+
+    let ambassadorCount = 0;
+    if (includeAmbassadors) {
+      const merged = await mergeAmbassadorsForCenter(
+        session,
+        centerNode.elementId,
+        uniqueNodes,
+        uniqueEdges,
+      );
+      uniqueNodes = merged.nodes;
+      uniqueEdges = merged.edges;
+      ambassadorCount = merged.ambassadorCount;
+    }
 
     const capped = capGraphPayload(centerNode.elementId, uniqueNodes, uniqueEdges, maxNodes);
 
@@ -556,6 +391,8 @@ app.get("/api/linkage/graph", async (req, res) => {
         maxNodes,
         relationshipTypes,
         centerFallbackUsed,
+        includeAmbassadors,
+        ambassadorsMerged: includeAmbassadors ? ambassadorCount : undefined,
       },
     });
   } catch (error) {

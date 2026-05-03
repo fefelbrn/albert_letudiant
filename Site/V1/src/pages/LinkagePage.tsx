@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { GraphNode, GraphResponse } from "../types/linkageGraph";
 import { apiUrl } from "../lib/apiBase";
 import { useUserProfile } from "../state/UserProfileContext";
@@ -73,8 +74,14 @@ function getPrimaryNodeInfo(node: GraphNode) {
   }
 }
 
+function truthyParam(value: string | null) {
+  const v = (value || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 export function LinkagePage() {
   const { profile } = useUserProfile();
+  const [searchParams] = useSearchParams();
   const [graph, setGraph] = useState<GraphResponse>({ nodes: [], edges: [] });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
@@ -94,14 +101,27 @@ export function LinkagePage() {
       try {
         setLoading(true);
         setError(null);
+        const urlEmail = searchParams.get("centerEmail")?.trim().toLowerCase() ?? "";
+        const urlPrenom = searchParams.get("centerPrenom")?.trim().toLowerCase() ?? "";
+        const urlNom = searchParams.get("centerNom")?.trim().toLowerCase() ?? "";
+        const centerEmail = urlEmail || (profile.email || "").trim().toLowerCase();
+        const centerPrenom = urlPrenom || (profile.prenom || "").trim().toLowerCase();
+        const centerNom = urlNom || (profile.nom || "").trim().toLowerCase();
+        const includeAmbassadors =
+          truthyParam(searchParams.get("includeAmbassadors")) ||
+          truthyParam(searchParams.get("withAmbassadors"));
+
         const query = new URLSearchParams({
-          centerEmail: (profile.email || "").trim().toLowerCase(),
-          centerPrenom: (profile.prenom || "").trim().toLowerCase(),
-          centerNom: (profile.nom || "").trim().toLowerCase(),
+          centerEmail,
+          centerPrenom,
+          centerNom,
           maxEdges: String(maxEdges),
           maxDepth: String(maxDepth),
           maxNodes: String(maxNodes),
         });
+        if (includeAmbassadors) {
+          query.set("includeAmbassadors", "1");
+        }
         const response = await fetch(apiUrl(`/api/linkage/graph?${query.toString()}`), {
           signal: controller.signal,
         });
@@ -135,7 +155,16 @@ export function LinkagePage() {
 
     void loadGraph();
     return () => controller.abort();
-  }, [maxDepth, maxEdges, maxNodes, profile.email, profile.nom, profile.prenom, requestVersion]);
+  }, [
+    maxDepth,
+    maxEdges,
+    maxNodes,
+    profile.email,
+    profile.nom,
+    profile.prenom,
+    requestVersion,
+    searchParams.toString(),
+  ]);
 
   const graphWithUser = useMemo(() => {
     const fullName = `${profile.prenom} ${profile.nom}`.trim();
@@ -312,6 +341,12 @@ export function LinkagePage() {
                 <>
                   {" "}
                   (plafond API: {graph.meta.maxNodes} noeuds)
+                </>
+              ) : null}
+              {graph.meta?.includeAmbassadors && graph.meta.ambassadorsMerged != null ? (
+                <>
+                  {" "}
+                  — ambassadeurs: {graph.meta.ambassadorsMerged}
                 </>
               ) : null}
             </p>

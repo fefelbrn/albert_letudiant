@@ -2,7 +2,8 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../state/AuthContext";
 
-const DEMO_EMAIL = "email@exemple.com";
+/** Aligné sur le nœud Student Neo4j / CSV id 114 (POC Linkage + HEC). */
+const DEMO_EMAIL = "léo.martin114@mail.fr";
 const DEMO_PASSWORD = "motdepasse";
 
 export function LoginPage() {
@@ -18,7 +19,7 @@ export function LoginPage() {
     const password = String(formData.get("password") ?? "");
 
     if (email !== DEMO_EMAIL.toLowerCase() || password !== DEMO_PASSWORD) {
-      setError("Identifiants incorrects. Compte demo : email@exemple.com / motdepasse");
+      setError(`Identifiants incorrects. Compte demo : ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
       return;
     }
 
@@ -36,7 +37,7 @@ export function LoginPage() {
           Compte demo : <strong>{DEMO_EMAIL}</strong> / <strong>{DEMO_PASSWORD}</strong>
         </p>
         {error ? <p className="linkage-error">{error}</p> : null}
-        <input name="email" type="email" placeholder="email@exemple.com" defaultValue={DEMO_EMAIL} required />
+        <input name="email" type="email" placeholder={DEMO_EMAIL} defaultValue={DEMO_EMAIL} required />
         <input
           name="password"
           type="password"

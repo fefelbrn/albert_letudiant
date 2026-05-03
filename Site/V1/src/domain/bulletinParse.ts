@@ -11,11 +11,14 @@ export type BulletinParseResult = {
   warnings: string[];
 };
 
-/** Règle : ancre = libellé matière dans la ligne ; la note est cherchée après l’ancre (évite les chiffres de l’adresse avant le mot « Maths »). */
-type SubjectRule = { matiere: LyceeMatiere; anchor: RegExp };
+/** Règle : ancre = libellé matière ; la note est lue après l’ancre (colonne Élève en priorité). */
+type SubjectRule = { matiere: LyceeMatiere; anchor: RegExp; skipIfEcoOnly?: boolean };
 
 const SUBJECT_RULES: SubjectRule[] = [
-  { matiere: "maths", anchor: /math[ée]matiques?|\bmaths?\b|sp[ée]cialit[ée][\s\w]*math/i },
+  {
+    matiere: "maths",
+    anchor: /\bmath[ée]matiques?\b|\bmaths?\b/i,
+  },
   {
     matiere: "physique_ou_eco",
     anchor:
@@ -25,6 +28,7 @@ const SUBJECT_RULES: SubjectRule[] = [
     matiere: "physique_ou_eco",
     anchor:
       /physique(?:[\s-]+chimie)?|chimie\b|enseignement\s+scientifique|\bSI\b(?!\s*\d)|sciences\s+de\s+l['’]ing[ée]nieur/i,
+    skipIfEcoOnly: true,
   },
   { matiere: "francais_philo", anchor: /fran[çc]ais|litt[ée]rature/i },
   { matiere: "francais_philo", anchor: /\bphilo(?:sophie)?\b/i },
@@ -36,7 +40,24 @@ const SUBJECT_RULES: SubjectRule[] = [
   { matiere: "sport", anchor: /\bEPS\b|éducation\s+physique|sport|activit[ée]s?\s+physiques/i },
 ];
 
-/** Lignes où le PDF a collé en-tête / pied de page : pas des relevés de notes. */
+/** Ligne « Spécialité : mathématiques » : ne doit pas remplir la case Maths générale du modèle. */
+function isMathSpecialtyRow(line: string): boolean {
+  return /sp[ée]cialit[ée]\s*:\s*math|sp[ée]cialit[ée][\s,]+math[ée]matiques/i.test(line);
+}
+
+/**
+ * Ligne uniquement SES / économie sans physique : ne pas faire matcher la règle « physique/chimie »
+ * (OCR ou PDF peut coller du bruit).
+ */
+/** Ligne typique SES sans discipline « physique » (évite les faux positifs OCR). */
+function isEcoOnlyLine(line: string): boolean {
+  const l = line.toLowerCase();
+  const hasEco =
+    /sciences\s+[ée]conomiques(\s+et\s+sociales)?|économie\s+et\s+sociale/i.test(l);
+  if (!hasEco) return false;
+  return !/physique|chimie|ensi(\s|$)|enseignement\s+scientifique/i.test(l);
+}
+
 function isLikelyNoiseLine(line: string): boolean {
   const l = line.toLowerCase();
   if (line.length > 240) return true;
@@ -54,7 +75,6 @@ function isLikelyNoiseLine(line: string): boolean {
   return false;
 }
 
-/** Plus le score est haut, plus la ligne ressemble à un bloc « relevé de notes ». */
 function releveLineScore(line: string): number {
   let s = 0;
   const l = line.toLowerCase();
@@ -63,8 +83,10 @@ function releveLineScore(line: string): number {
   if (/trimestre|1er\s+trim|2[èe]me\s+trim/i.test(line)) s += 2;
   if (/matière|matieres|disciplines?/i.test(line)) s += 2;
   if (/\/\s*20|moyenne|note\s*:/i.test(line)) s += 2;
+  if (/él[eè]ve|moyennes?/i.test(line)) s += 1;
   if (line.length > 140) s -= 1;
   if (/élèves?\)/i.test(l)) s += 1;
+  if (/sp[ée]cialit[ée]/i.test(line)) s -= 2;
   return s;
 }
 
@@ -74,9 +96,15 @@ function clamp20(n: number): number | null {
   return Math.round(n * 100) / 100;
 }
 
+function parseDecimal(raw: string): number | null {
+  const normalized = raw.replace(",", ".");
+  const n = parseFloat(normalized);
+  return clamp20(n);
+}
+
 /**
- * Note /20 dans un fragment de ligne (souvent tout ce qui suit le nom de la matière).
- * Privilégie XX,XX/20 puis un seul décimal dans [0,20].
+ * Note élève /20 dans le fragment après le nom de matière.
+ * Les bulletins tabulaires ont souvent « Élève | Clas. » : on prend la **première** note quand deux décimales se suivent.
  */
 export function extractBulletinNoteFromLine(fragment: string): number | null {
   const s = fragment.replace(/\s+/g, " ").trim();
@@ -95,6 +123,35 @@ export function extractBulletinNoteFromLine(fragment: string): number | null {
     if (slash[3]) return clamp20(parseInt(slash[3], 10));
   }
 
+  const eleveLabel = s.match(
+    /\bél[eè]ves?\b\s*[:=.]?\s*(\d{1,2}[,.]\d{1,2})\b|\bmoy\.?\s*él[eè]ve\s*[:=.]?\s*(\d{1,2}[,.]\d{1,2})\b/i,
+  );
+  if (eleveLabel) {
+    const raw = eleveLabel[1] ?? eleveLabel[2];
+    if (raw) {
+      const v = parseDecimal(raw);
+      if (v != null) return v;
+    }
+  }
+
+  const pair = s.match(/(\d{1,2}[,.]\d{2})\s+(\d{1,2}[,.]\d{2})\b/);
+  if (pair) {
+    const a = parseDecimal(pair[1]);
+    const b = parseDecimal(pair[2]);
+    if (a != null && b != null) {
+      return a;
+    }
+  }
+
+  if (/\bclas[s]?\b|moy\.?\s*clas|moyenne\s+classe/i.test(s)) {
+    const beforeClas = s.split(/\bclas[s]?\b|moy\.?\s*clas/i)[0];
+    const decimals = [...beforeClas.matchAll(/(\d{1,2}[,.]\d{2})\b/g)].map((m) => parseDecimal(m[1]));
+    const ok = decimals.filter((n): n is number => n != null);
+    if (ok.length >= 1) {
+      return ok[0];
+    }
+  }
+
   const decimals = [...s.matchAll(/(\d{1,2})[,.](\d{2})\b/g)].map((m) =>
     clamp20(parseFloat(`${m[1]}.${m[2]}`)),
   );
@@ -102,9 +159,6 @@ export function extractBulletinNoteFromLine(fragment: string): number | null {
   if (validDec.length === 1) return validDec[0];
   if (validDec.length > 1) {
     const inRange = validDec.filter((n) => n >= 0 && n <= 20);
-    const plausible = inRange.filter((n) => n >= 8 || inRange.length === 1);
-    if (plausible.length === 1) return plausible[0];
-    if (plausible.length > 1) return plausible[0];
     return inRange[0] ?? null;
   }
 
@@ -193,7 +247,10 @@ export function parseBulletinText(fullText: string, filename?: string): Bulletin
 
     const baseScore = releveLineScore(line);
 
-    for (const { matiere, anchor } of SUBJECT_RULES) {
+    for (const { matiere, anchor, skipIfEcoOnly } of SUBJECT_RULES) {
+      if (matiere === "maths" && isMathSpecialtyRow(line)) continue;
+      if (skipIfEcoOnly && isEcoOnlyLine(line)) continue;
+
       const anchorCopy = new RegExp(anchor.source, anchor.flags);
       const m = anchorCopy.exec(line);
       if (!m) continue;
@@ -201,7 +258,10 @@ export function parseBulletinText(fullText: string, filename?: string): Bulletin
       const note = extractBulletinNoteFromLine(tail);
       if (note == null) continue;
 
-      const combined = baseScore + (m.index < 20 ? 1 : 0);
+      let rowBonus = m.index < 20 ? 1 : 0;
+      if (matiere === "maths" && !/sp[ée]cialit[ée]/i.test(line)) rowBonus += 2;
+
+      const combined = baseScore + rowBonus;
       const candidate: ScoredPick = {
         matiere,
         note,

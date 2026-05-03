@@ -19,7 +19,7 @@ const MATIERE_LABELS: Record<LyceeMatiere, string> = {
   francais_philo: "Français-Philo",
   anglais: "Anglais",
   histoire: "Histoire",
-  physique_ou_eco: "Physique / Éco",
+  physique_ou_eco: "SES / économie (ou physique)",
   sport: "Sport",
 };
 

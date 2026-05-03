@@ -127,29 +127,22 @@ npm run dev
 API sante: <http://localhost:4000/api/health>  
 API graph: <http://localhost:4000/api/linkage/graph>
 
-Le endpoint graph supporte:
-- `centerEmail` (prioritaire si present dans Neo4j)
-- `centerPrenom` + `centerNom` (minuscules, compares a `Student.prenom` / `Student.nom` si pas d’email)
-- `centerStudentId`
-- `maxDepth` (1..3) — sur gros volumes, preferer 1
-- `maxEdges` (15..400) — borne les relations analysees avant rendu
-- `maxNodes` (24..96) — plafond de noeuds renvoyes (priorite ecoles/villes puis echantillon d’eleves)
+Le endpoint graph (`graphEngine: neighborhood`) reprend la logique Aura : **1 saut** depuis le `Student` centre, **ambassadeurs** sur les écoles `STUDIES_AT` / `INTERESTED_IN`, puis pour chaque nœud pivot un **CALL** avec `ORDER BY type` et **`perNodeLimit`** arêtes max, puis troncature globale `maxEdges` et cap `maxNodes`.
+
+Paramètres:
+- `centerEmail` (recommandé, même email que le compte démo / import CSV)
+- `centerPrenom` + `centerNom` ou `centerStudentId` si pas d’email
+- `maxEdges` (15..400), `maxNodes` (24..96), `perNodeLimit` (3..25, défaut 10)
 - `types` (CSV des types de relation)
-- `includeAmbassadors` (`1` / `true`) — ajoute toujours les ambassadeurs des écoles où le centre est en `STUDIES_AT` ou `INTERESTED_IN` (évite qu’ils soient coupés par `maxEdges` sur gros graphes)
+- Si un centre explicite est demandé mais **aucun** `Student` ne matche → réponse vide et `meta.centerMatched: false` (pas de fallback aléatoire).
 
 Exemple:
 
 ```bash
-http://localhost:4000/api/linkage/graph?centerEmail=l%C3%A9a.petit2%40mail.fr&maxDepth=2&maxEdges=120&maxNodes=72
+http://localhost:4000/api/linkage/graph?centerEmail=l%C3%A9o.martin114%40mail.fr&maxEdges=250&maxNodes=96&perNodeLimit=10
 ```
 
-Léo (HEC) + ambassadeurs fusionnés côté API :
-
-```bash
-http://localhost:4000/api/linkage/graph?centerEmail=l%C3%A9o.martin114%40mail.fr&maxDepth=2&maxEdges=200&maxNodes=96&includeAmbassadors=1
-```
-
-Même chose dans le front : `/linkage?centerEmail=léo.martin114@mail.fr&includeAmbassadors=1` (adapter l’encodage si besoin).
+Front : `/linkage` utilise l’email du profil connecté ; surcharge possible : `?centerEmail=...&perNodeLimit=12`.
 
 ## 5) Lancer le frontend
 

@@ -74,11 +74,6 @@ function getPrimaryNodeInfo(node: GraphNode) {
   }
 }
 
-function truthyParam(value: string | null) {
-  const v = (value || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
 export function LinkagePage() {
   const { profile } = useUserProfile();
   const [searchParams] = useSearchParams();
@@ -86,9 +81,9 @@ export function LinkagePage() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [activeTypes, setActiveTypes] = useState<string[]>([]);
-  const [maxEdges, setMaxEdges] = useState(120);
-  const [maxDepth, setMaxDepth] = useState(2);
-  const [maxNodes, setMaxNodes] = useState(72);
+  const [maxEdges, setMaxEdges] = useState(220);
+  const [perNodeLimit, setPerNodeLimit] = useState(10);
+  const [maxNodes, setMaxNodes] = useState(96);
   const [requestVersion, setRequestVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,21 +102,18 @@ export function LinkagePage() {
         const centerEmail = urlEmail || (profile.email || "").trim().toLowerCase();
         const centerPrenom = urlPrenom || (profile.prenom || "").trim().toLowerCase();
         const centerNom = urlNom || (profile.nom || "").trim().toLowerCase();
-        const includeAmbassadors =
-          truthyParam(searchParams.get("includeAmbassadors")) ||
-          truthyParam(searchParams.get("withAmbassadors"));
+        const urlPerNode = Number(searchParams.get("perNodeLimit") ?? "");
+        const effectivePerNode =
+          Number.isFinite(urlPerNode) && urlPerNode >= 3 && urlPerNode <= 25 ? urlPerNode : perNodeLimit;
 
         const query = new URLSearchParams({
           centerEmail,
           centerPrenom,
           centerNom,
           maxEdges: String(maxEdges),
-          maxDepth: String(maxDepth),
           maxNodes: String(maxNodes),
+          perNodeLimit: String(effectivePerNode),
         });
-        if (includeAmbassadors) {
-          query.set("includeAmbassadors", "1");
-        }
         const response = await fetch(apiUrl(`/api/linkage/graph?${query.toString()}`), {
           signal: controller.signal,
         });
@@ -156,9 +148,9 @@ export function LinkagePage() {
     void loadGraph();
     return () => controller.abort();
   }, [
-    maxDepth,
     maxEdges,
     maxNodes,
+    perNodeLimit,
     profile.email,
     profile.nom,
     profile.prenom,
@@ -343,12 +335,7 @@ export function LinkagePage() {
                   (plafond API: {graph.meta.maxNodes} noeuds)
                 </>
               ) : null}
-              {graph.meta?.includeAmbassadors && graph.meta.ambassadorsMerged != null ? (
-                <>
-                  {" "}
-                  — ambassadeurs: {graph.meta.ambassadorsMerged}
-                </>
-              ) : null}
+              {graph.meta?.graphEngine === "neighborhood" ? <> — moteur: voisinage + ambassadeurs</> : null}
             </p>
             <div className="linkage-controls">
               <label htmlFor="linkage-max-edges">
@@ -375,16 +362,18 @@ export function LinkagePage() {
                 value={maxNodes}
                 onChange={(event) => setMaxNodes(Number(event.target.value))}
               />
-              <label htmlFor="linkage-max-depth">Profondeur:</label>
-              <select
-                id="linkage-max-depth"
-                value={maxDepth}
-                onChange={(event) => setMaxDepth(Number(event.target.value))}
-              >
-                <option value={1}>1 saut (gros volumes)</option>
-                <option value={2}>2 sauts (defaut compte)</option>
-                <option value={3}>3 sauts</option>
-              </select>
+              <label htmlFor="linkage-per-node">
+                Max arêtes / nœud pivot: <strong>{perNodeLimit}</strong>
+              </label>
+              <input
+                id="linkage-per-node"
+                type="range"
+                min={4}
+                max={20}
+                step={1}
+                value={perNodeLimit}
+                onChange={(event) => setPerNodeLimit(Number(event.target.value))}
+              />
               <button type="button" className="btn btn-soft" onClick={() => setRequestVersion((v) => v + 1)}>
                 Recharger
               </button>
@@ -402,10 +391,16 @@ export function LinkagePage() {
               ))}
             </div>
             <p className="linkage-hint">
-              Le graphe part du compte connecte (email ou prenom + nom) dans Neo4j, puis etend la profondeur choisie.
-              Astuce: glisse un noeud pour le repositionner. Si c&apos;est lent ou illisible, passe a 1 saut ou baisse
-              max relations / max noeuds.
+              Le graphe reprend la logique Neo4j « voisinage du Student + ambassadeurs des mêmes écoles », avec une
+              borne par nœud pivot (comme en Aura). L&apos;email du compte doit correspondre à un{' '}
+              <code>Student.email</code> dans la base. Astuce: glisse un nœud pour le repositionner.
             </p>
+            {graph.meta?.centerMatched === false ? (
+              <p className="linkage-warning">
+                Aucun étudiant Neo4j pour cet email (ou prénom + nom). Vérifie l&apos;import CSV ou l&apos;orthographe
+                de l&apos;email du compte.
+              </p>
+            ) : null}
             {graph.meta?.truncated ? (
               <p className="linkage-warning">
                 Relations tronquees cote serveur ({graph.meta.returnedEdges}/{graph.meta.totalRelations ?? "?"}).

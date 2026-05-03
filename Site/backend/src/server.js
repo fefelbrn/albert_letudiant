@@ -107,51 +107,6 @@ function graphPrimaryLabel(node) {
   return node.labels && node.labels[0] ? node.labels[0] : "Unknown";
 }
 
-function truthyQueryParam(value) {
-  const v = normalizeText(value).toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
-/** Fusionne ambassadeurs (même école que le centre) + leurs liens STUDIED_AT / LIVES_IN / CONNECTED_TO. */
-async function mergeAmbassadorsForCenter(session, centerElementId, uniqueNodes, uniqueEdges) {
-  const ambRes = await session.run(
-    `
-    MATCH (center:Student) WHERE elementId(center) = $centerElementId
-    MATCH (center)-[:STUDIES_AT|INTERESTED_IN]->(sch:School)<-[:STUDIED_AT]-(amb:Ambassador)
-    MATCH (amb)-[st:STUDIED_AT]->(sch)
-    OPTIONAL MATCH (amb)-[lv:LIVES_IN]->(:City)
-    OPTIONAL MATCH (center)-[ct:CONNECTED_TO]->(amb)
-    RETURN collect(DISTINCT amb) AS ambassadors,
-           collect(DISTINCT st) AS studiedRels,
-           collect(DISTINCT lv) AS livedRels,
-           collect(DISTINCT ct) AS connRels
-    `,
-    { centerElementId },
-  );
-  if (ambRes.records.length === 0) {
-    return { nodes: uniqueNodes, edges: uniqueEdges, ambassadorCount: 0 };
-  }
-  const rec = ambRes.records[0];
-  const ambassadors = (rec.get("ambassadors") || []).filter(Boolean);
-  const studiedRels = (rec.get("studiedRels") || []).filter(Boolean);
-  const livedRels = (rec.get("livedRels") || []).filter(Boolean);
-  const connRels = (rec.get("connRels") || []).filter(Boolean);
-
-  const nodeMap = new Map(uniqueNodes.map((n) => [n.elementId, n]));
-  for (const n of ambassadors) {
-    nodeMap.set(n.elementId, n);
-  }
-  const edgeMap = new Map(uniqueEdges.map((e) => [e.elementId, e]));
-  for (const r of [...studiedRels, ...livedRels, ...connRels]) {
-    edgeMap.set(r.elementId, r);
-  }
-  return {
-    nodes: [...nodeMap.values()],
-    edges: [...edgeMap.values()],
-    ambassadorCount: ambassadors.length,
-  };
-}
-
 /** Limite le nombre de noeuds (surtout Student) pour graphes lisibles sur gros volumes. */
 function capGraphPayload(centerElementId, uniqueNodes, uniqueEdges, maxNodes) {
   if (uniqueNodes.length <= maxNodes) {
@@ -224,8 +179,9 @@ app.get("/api/linkage/graph", async (req, res) => {
   const session = driver.session(neo4jSessionConfig(neo4j.session.READ));
 
   const maxDepth = Math.max(1, Math.min(GRAPH_LIMITS.maxDepth, Number(req.query.maxDepth ?? 2)));
-  const maxEdges = Math.max(15, Math.min(GRAPH_LIMITS.maxEdges, Number(req.query.maxEdges ?? 120)));
-  const maxNodes = Math.max(24, Math.min(GRAPH_LIMITS.maxNodes, Number(req.query.maxNodes ?? 72)));
+  const maxEdges = Math.max(15, Math.min(GRAPH_LIMITS.maxEdges, Number(req.query.maxEdges ?? 400)));
+  const maxNodes = Math.max(24, Math.min(GRAPH_LIMITS.maxNodes, Number(req.query.maxNodes ?? 96)));
+  const perNodeLimit = Math.max(3, Math.min(25, Number(req.query.perNodeLimit ?? 10)));
   const centerEmail = normalizeText(req.query.centerEmail).toLowerCase() || null;
   const centerStudentId = normalizeText(req.query.centerStudentId) || null;
   const centerPrenom = normalizeText(req.query.centerPrenom).toLowerCase() || null;
@@ -234,7 +190,53 @@ app.get("/api/linkage/graph", async (req, res) => {
   const relationshipTypes = typesQuery
     ? typesQuery.split(",").map((value) => normalizeText(value)).filter(Boolean)
     : [];
-  const includeAmbassadors = truthyQueryParam(req.query.includeAmbassadors);
+  const explicitCenter =
+    Boolean(centerEmail) || Boolean(centerStudentId) || (Boolean(centerPrenom) && Boolean(centerNom));
+
+  /** Même logique que la requête Aura : 1 saut centre, ambassadeurs des écoles du centre, puis max N arêtes par nœud pivot. */
+  const neighborhoodGraphQuery = `
+    MATCH (center:Student) WHERE elementId(center) = $centerElementId
+    OPTIONAL MATCH p1 = (center)-[r1]-(n1)
+    WITH center, collect(DISTINCT p1) AS paths1Raw, collect(DISTINCT n1) AS nbrsRaw
+    WITH center,
+         [p IN paths1Raw WHERE p IS NOT NULL AND size(relationships(p)) > 0] AS paths1,
+         [n IN nbrsRaw WHERE n IS NOT NULL] AS nbrs
+    OPTIONAL MATCH (center)-[:STUDIES_AT|INTERESTED_IN]->(:School)<-[:STUDIED_AT]-(amb:Ambassador)
+    WITH center, paths1, nbrs, collect(DISTINCT amb) AS ambsRaw
+    WITH center, paths1, nbrs, [a IN ambsRaw WHERE a IS NOT NULL] AS ambs
+    OPTIONAL MATCH pAmb = (center)-[:STUDIES_AT|INTERESTED_IN]->(:School)<-[:STUDIED_AT]-(amb2:Ambassador)
+    WHERE amb2 IN ambs
+    WITH center, paths1, nbrs, ambs, collect(DISTINCT pAmb) AS pathsAmbRaw
+    WITH center, paths1, nbrs, ambs,
+         [p IN pathsAmbRaw WHERE p IS NOT NULL AND size(relationships(p)) > 0] AS pathsAmb,
+         [center] + nbrs + ambs AS noeuds
+    UNWIND noeuds AS x
+    CALL (x) {
+      WITH x
+      MATCH p2 = (x)-[r2]-(y)
+      WHERE size($relationshipTypes) = 0 OR type(r2) IN $relationshipTypes
+      WITH p2, r2, y
+      ORDER BY type(r2), elementId(y)
+      LIMIT $perNodeLimit
+      RETURN collect(p2) AS chunk
+    }
+    WITH center, paths1, pathsAmb, collect(chunk) AS chunks
+    WITH center, paths1, pathsAmb, reduce(acc = [], c IN chunks | acc + c) AS paths2
+    WITH center, [p IN paths1 WHERE p IS NOT NULL] + [p IN paths2 WHERE p IS NOT NULL] + [p IN pathsAmb WHERE p IS NOT NULL] AS allPaths
+    UNWIND allPaths AS p
+    UNWIND relationships(p) AS rel
+    WHERE size($relationshipTypes) = 0 OR type(rel) IN $relationshipTypes
+    WITH center, collect(DISTINCT rel) AS allRels
+    WITH center, allRels, size(allRels) AS totalRelations
+    WITH center, totalRelations, allRels[0..$maxEdges] AS limitedRels
+    WITH center, totalRelations,
+         CASE WHEN size(limitedRels) > 0 THEN limitedRels ELSE [] END AS relationships
+    WITH center, totalRelations, relationships,
+         reduce(acc = [], r IN relationships | acc + [startNode(r), endNode(r)]) AS rawEnds
+    UNWIND (rawEnds + CASE WHEN size(relationships) = 0 THEN [center] ELSE [] END) AS n
+    WITH totalRelations, relationships, collect(DISTINCT n) AS nodes
+    RETURN nodes, relationships, totalRelations
+  `;
 
   try {
     const centerResult = await session.run(
@@ -257,7 +259,7 @@ app.get("/api/linkage/graph", async (req, res) => {
     let centerNode = centerResult.records[0]?.get("s");
     let centerFallbackUsed = false;
 
-    if (!centerNode) {
+    if (!centerNode && !explicitCenter) {
       const fallback = await session.run(
         "MATCH (s:Student) RETURN s ORDER BY s.email ASC LIMIT 1",
       );
@@ -277,102 +279,55 @@ app.get("/api/linkage/graph", async (req, res) => {
           maxDepth,
           maxEdges,
           maxNodes,
+          perNodeLimit,
           centerFallbackUsed,
+          centerMatched: false,
+          graphEngine: "neighborhood",
+          relationshipTypes,
         },
       });
     }
 
-    const graphQuery = `
-      MATCH (center:Student) WHERE elementId(center) = $centerElementId
-      CALL {
-        WITH center
-        MATCH p = (center)-[*1..${maxDepth}]-(n)
-        UNWIND relationships(p) AS rel
-        WITH rel
-        WHERE size($relationshipTypes) = 0 OR type(rel) IN $relationshipTypes
-        RETURN collect(DISTINCT rel) AS allRelations
-      }
-      WITH center, allRelations, size(allRelations) AS totalRelations
-      WITH center, totalRelations, allRelations[0..$maxEdges] AS limitedRelations
-      UNWIND limitedRelations AS rel
-      WITH center, totalRelations, collect(DISTINCT rel) AS rels
-      UNWIND rels AS relationship
-      WITH center, totalRelations, rels, startNode(relationship) AS sourceNode, endNode(relationship) AS targetNode
-      WITH
-        center,
-        totalRelations,
-        rels AS relationships,
-        collect(DISTINCT sourceNode) AS sourceNodes,
-        collect(DISTINCT targetNode) AS targetNodes
-      WITH
-        totalRelations,
-        relationships,
-        sourceNodes + targetNodes + [center] AS rawNodes
-      UNWIND rawNodes AS node
-      WITH collect(DISTINCT node) AS nodes, relationships, totalRelations
-      RETURN nodes, relationships, totalRelations
-    `;
-    const graphResult = await session.run(
-      graphQuery,
-      {
-        centerElementId: centerNode.elementId,
-        maxEdges,
-        relationshipTypes,
-      },
-    );
+    const graphResult = await session.run(neighborhoodGraphQuery, {
+      centerElementId: centerNode.elementId,
+      relationshipTypes,
+      maxEdges: neo4j.int(maxEdges),
+      perNodeLimit: neo4j.int(perNodeLimit),
+    });
 
     if (graphResult.records.length === 0) {
-      let soloNodes = [centerNode];
-      let soloEdges = [];
-      let soloAmbassadorCount = 0;
-      if (includeAmbassadors) {
-        const merged = await mergeAmbassadorsForCenter(session, centerNode.elementId, soloNodes, soloEdges);
-        soloNodes = merged.nodes;
-        soloEdges = merged.edges;
-        soloAmbassadorCount = merged.ambassadorCount;
-      }
-      const cappedSolo = capGraphPayload(centerNode.elementId, soloNodes, soloEdges, maxNodes);
+      const cappedSolo = capGraphPayload(centerNode.elementId, [centerNode], [], maxNodes);
       return res.json({
         nodes: cappedSolo.nodes.map(mapNode),
-        edges: cappedSolo.edges.map(mapRelationship),
+        edges: [],
         meta: {
           truncated: false,
           truncatedNodes: cappedSolo.truncatedNodes,
-          totalNodesBeforeCap: soloNodes.length,
+          totalNodesBeforeCap: 1,
+          totalRelations: 0,
           returnedNodes: cappedSolo.nodes.length,
-          returnedEdges: cappedSolo.edges.length,
+          returnedEdges: 0,
           maxDepth,
           maxEdges,
           maxNodes,
+          perNodeLimit,
           centerFallbackUsed,
-          includeAmbassadors,
-          ambassadorsMerged: includeAmbassadors ? soloAmbassadorCount : undefined,
+          centerMatched: true,
+          graphEngine: "neighborhood",
+          relationshipTypes,
         },
       });
     }
 
     const record = graphResult.records[0];
-    const nodes = record.get("nodes");
-    const relationships = record.get("relationships");
+    const nodes = record.get("nodes") || [];
+    const relationships = record.get("relationships") || [];
     const totalRelations = Number(record.get("totalRelations") ?? 0);
 
-    let uniqueNodes = Array.from(new Map(nodes.map((node) => [node.elementId, node])).values());
-    let uniqueEdges = Array.from(
+    const uniqueNodes = Array.from(new Map(nodes.map((node) => [node.elementId, node])).values());
+    const uniqueEdges = Array.from(
       new Map(relationships.map((edge) => [edge.elementId, edge])).values(),
     );
-
-    let ambassadorCount = 0;
-    if (includeAmbassadors) {
-      const merged = await mergeAmbassadorsForCenter(
-        session,
-        centerNode.elementId,
-        uniqueNodes,
-        uniqueEdges,
-      );
-      uniqueNodes = merged.nodes;
-      uniqueEdges = merged.edges;
-      ambassadorCount = merged.ambassadorCount;
-    }
 
     const capped = capGraphPayload(centerNode.elementId, uniqueNodes, uniqueEdges, maxNodes);
 
@@ -389,10 +344,11 @@ app.get("/api/linkage/graph", async (req, res) => {
         maxDepth,
         maxEdges,
         maxNodes,
+        perNodeLimit,
         relationshipTypes,
         centerFallbackUsed,
-        includeAmbassadors,
-        ambassadorsMerged: includeAmbassadors ? ambassadorCount : undefined,
+        centerMatched: true,
+        graphEngine: "neighborhood",
       },
     });
   } catch (error) {

@@ -36,9 +36,10 @@ export type GraphResponse = {
     maxDepth: number;
     maxEdges: number;
     maxNodes?: number;
+    perNodeLimit?: number;
     relationshipTypes?: string[];
     centerFallbackUsed?: boolean;
-    includeAmbassadors?: boolean;
-    ambassadorsMerged?: number;
+    centerMatched?: boolean;
+    graphEngine?: string;
   };
 };

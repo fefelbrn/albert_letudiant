@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import ForceGraph2D from "react-force-graph-2d";
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { useSearchParams } from "react-router-dom";
 import type { GraphNode, GraphResponse } from "../types/linkageGraph";
 import { apiUrl } from "../lib/apiBase";
@@ -85,6 +84,17 @@ function linkEndpoints(link: LinkObject): { sx: number; sy: number; tx: number; 
 
 function asNodeId(ref: string | GraphNode) {
   return typeof ref === "string" ? ref : ref.id;
+}
+
+/** Décale les étiquettes de relations d’un côté ou de l’autre de l’arête pour limiter les recouvrements. */
+function linkLabelSide(link: LinkObject): 1 | -1 {
+  const a = asNodeId(link.source);
+  const b = asNodeId(link.target);
+  let h = 0;
+  for (const c of `${a}|${b}|${link.type}|${link.id}`) {
+    h = (h * 31 + c.charCodeAt(0)) % 1_000_003;
+  }
+  return h % 2 === 0 ? 1 : -1;
 }
 
 function getPrimaryNodeInfo(node: GraphNode) {
@@ -250,6 +260,22 @@ export function LinkagePage() {
 
   const isHeavyGraph = filteredGraph.nodes.length > 48;
   const pinnedNode = selectedNode ?? hoveredNode;
+  const nodeRadius = isHeavyGraph ? 8 : 11;
+  const fgRef = useRef<ForceGraphMethods<GraphNode, LinkObject> | undefined>(undefined);
+
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    const charge = fg.d3Force("charge");
+    if (charge && typeof charge.strength === "function") {
+      charge.strength(isHeavyGraph ? -520 : -680);
+    }
+    const linkF = fg.d3Force("link");
+    if (linkF && typeof linkF.distance === "function") {
+      linkF.distance(isHeavyGraph ? 110 : 140);
+    }
+    fg.d3ReheatSimulation();
+  }, [isHeavyGraph, filteredGraph.nodes.length, filteredGraph.links.length]);
 
   return (
     <main className="section container linkage-page">
@@ -400,19 +426,22 @@ export function LinkagePage() {
                 ))}
               </div>
               <ForceGraph2D
-                width={900}
-                height={560}
+                ref={fgRef}
+                width={980}
+                height={620}
                 graphData={filteredGraph}
-                cooldownTicks={isHeavyGraph ? 90 : 160}
-                d3VelocityDecay={isHeavyGraph ? 0.45 : 0.35}
+                cooldownTicks={isHeavyGraph ? 120 : 200}
+                d3VelocityDecay={isHeavyGraph ? 0.38 : 0.32}
+                d3AlphaDecay={0.022}
+                warmupTicks={isHeavyGraph ? 80 : 120}
                 nodeLabel={(node) => {
                   const typedNode = node as GraphNode;
                   return `${getPrimaryNodeInfo(typedNode)} (${labelForGraphType(typedNode.type)})`;
                 }}
-                nodeRelSize={isHeavyGraph ? 3 : 5}
+                nodeRelSize={nodeRadius}
                 nodeColor={(node) => nodePalette[(node as GraphNode).type] ?? "#6D7483"}
-                linkDirectionalParticles={isHeavyGraph ? 0 : 2}
-                linkDirectionalParticleWidth={1.5}
+                linkDirectionalParticles={isHeavyGraph ? 0 : 1}
+                linkDirectionalParticleWidth={1.2}
                 onNodeClick={(node) => setSelectedNode(node as GraphNode)}
                 onNodeHover={(node) => setHoveredNode((node as GraphNode | null) ?? null)}
                 onNodeDragEnd={(node) => {
@@ -436,8 +465,8 @@ export function LinkagePage() {
                   const neo = rel.type;
                   return `${neo} — ${labelForRelationship(neo)}`;
                 }}
-                linkWidth={() => 1.2}
-                linkColor={() => "#cfd4dd"}
+                linkWidth={() => (isHeavyGraph ? 1.35 : 1.75)}
+                linkColor={() => "#b8c0d0"}
                 linkCanvasObjectMode={() => "after"}
                 linkCanvasObject={(link, ctx, globalScale) => {
                   const rel = link as LinkObject;
@@ -446,52 +475,58 @@ export function LinkagePage() {
                   const { sx, sy, tx, ty } = ends;
                   const neo = rel.type;
                   if (!neo) return;
-                  const mx = (sx + tx) / 2;
-                  const my = (sy + ty) / 2;
-                  const padX = 5 / globalScale;
-                  const padY = 3 / globalScale;
-                  const r = 4 / globalScale;
+                  const dx = tx - sx;
+                  const dy = ty - sy;
+                  const len = Math.hypot(dx, dy) || 1;
+                  const nx = (-dy / len) * linkLabelSide(rel);
+                  const ny = (dx / len) * linkLabelSide(rel);
+                  const labelLift = (isHeavyGraph ? 16 : 22) / globalScale;
+                  const mx = (sx + tx) / 2 + nx * labelLift;
+                  const my = (sy + ty) / 2 + ny * labelLift;
+                  const padX = 7 / globalScale;
+                  const padY = 5 / globalScale;
+                  const cornerR = 6 / globalScale;
                   ctx.textAlign = "center";
                   ctx.textBaseline = "middle";
 
                   if (isHeavyGraph) {
-                    const fs = Math.max(6, 8 / globalScale);
+                    const fs = Math.max(8, 10.5 / globalScale);
                     ctx.font = `600 ${fs}px ui-monospace, "Cascadia Code", monospace`;
                     const w = ctx.measureText(neo).width;
                     const boxW = w + padX * 2;
                     const boxH = fs + padY * 2;
                     const left = mx - boxW / 2;
                     const top = my - boxH / 2;
-                    ctx.fillStyle = "rgba(255,255,255,0.92)";
-                    ctx.strokeStyle = "#c5cad6";
-                    ctx.lineWidth = 1 / globalScale;
+                    ctx.fillStyle = "rgba(255,255,255,0.96)";
+                    ctx.strokeStyle = "#a8b0c2";
+                    ctx.lineWidth = 1.25 / globalScale;
                     ctx.beginPath();
-                    ctx.roundRect(left, top, boxW, boxH, r);
+                    ctx.roundRect(left, top, boxW, boxH, cornerR);
                     ctx.fill();
                     ctx.stroke();
-                    ctx.fillStyle = "#3a4150";
+                    ctx.fillStyle = "#2a3142";
                     ctx.fillText(neo, mx, my);
                     return;
                   }
 
                   const line1 = neo;
                   const line2 = labelForRelationship(neo);
-                  const fs1 = Math.max(7, 9 / globalScale);
-                  const fs2 = Math.max(6, 7.5 / globalScale);
+                  const fs1 = Math.max(9, 11 / globalScale);
+                  const fs2 = Math.max(8, 9.5 / globalScale);
                   ctx.font = `600 ${fs1}px ui-monospace, "Cascadia Code", monospace`;
                   const w1 = ctx.measureText(line1).width;
                   ctx.font = `500 ${fs2}px Inter, system-ui, sans-serif`;
                   const w2 = ctx.measureText(line2).width;
-                  const lineGap = 2 / globalScale;
+                  const lineGap = 3 / globalScale;
                   const boxW = Math.max(w1, w2) + padX * 2;
                   const boxH = fs1 + fs2 + lineGap + padY * 2;
                   const left = mx - boxW / 2;
                   const top = my - boxH / 2;
-                  ctx.fillStyle = "rgba(255,255,255,0.94)";
-                  ctx.strokeStyle = "#c5cad6";
-                  ctx.lineWidth = 1 / globalScale;
+                  ctx.fillStyle = "rgba(255,255,255,0.97)";
+                  ctx.strokeStyle = "#a8b0c2";
+                  ctx.lineWidth = 1.25 / globalScale;
                   ctx.beginPath();
-                  ctx.roundRect(left, top, boxW, boxH, r);
+                  ctx.roundRect(left, top, boxW, boxH, cornerR);
                   ctx.fill();
                   ctx.stroke();
                   ctx.fillStyle = "#1f2532";
@@ -501,25 +536,40 @@ export function LinkagePage() {
                   ctx.font = `500 ${fs2}px Inter, system-ui, sans-serif`;
                   ctx.fillText(line2, mx, top + padY + fs1 + lineGap + fs2 / 2);
                 }}
+                nodePointerAreaPaint={(node, color, ctx, globalScale) => {
+                  const n = node as GraphNodeWithPhysics;
+                  const x = n.x ?? 0;
+                  const y = n.y ?? 0;
+                  const r = nodeRadius + 4 / globalScale;
+                  ctx.fillStyle = color;
+                  ctx.beginPath();
+                  ctx.arc(x, y, r, 0, 2 * Math.PI);
+                  ctx.fill();
+                }}
                 nodeCanvasObject={(node, ctx, globalScale) => {
                   const typedNode = node as GraphNodeWithPhysics;
                   const label = getPrimaryNodeInfo(typedNode);
                   const showLabel = pinnedNode !== null && pinnedNode.id === typedNode.id;
-                  const fontSize = Math.max(10, 13 / globalScale);
-                  ctx.font = `${fontSize}px Inter, sans-serif`;
-                  ctx.fillStyle = nodePalette[typedNode.type] ?? "#6D7483";
+                  const r = nodeRadius;
+                  const x = typedNode.x ?? 0;
+                  const y = typedNode.y ?? 0;
+                  const fontSize = Math.max(11, 14 / globalScale);
                   ctx.beginPath();
-                  ctx.arc(
-                    typedNode.x ?? 0,
-                    typedNode.y ?? 0,
-                    5,
-                    0,
-                    2 * Math.PI,
-                  );
+                  ctx.arc(x, y, r, 0, 2 * Math.PI);
+                  ctx.fillStyle = nodePalette[typedNode.type] ?? "#6D7483";
                   ctx.fill();
+                  ctx.lineWidth = 2.2 / globalScale;
+                  ctx.strokeStyle = "rgba(255,255,255,0.92)";
+                  ctx.stroke();
+                  ctx.lineWidth = 1 / globalScale;
+                  ctx.strokeStyle = "rgba(0,0,0,0.12)";
+                  ctx.stroke();
                   if (showLabel) {
+                    ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
                     ctx.fillStyle = "#1f2532";
-                    ctx.fillText(label, (typedNode.x ?? 0) + 10, (typedNode.y ?? 0) - 8);
+                    ctx.textAlign = "left";
+                    ctx.textBaseline = "bottom";
+                    ctx.fillText(label, x + r + 8 / globalScale, y - 4 / globalScale);
                   }
                 }}
               />

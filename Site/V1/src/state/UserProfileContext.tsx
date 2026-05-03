@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { canonicalStudentLead } from "../data/canonicalStudentLead";
-import { emptyUserProfile, type UserProfile } from "../types/userProfile";
+import { emptyUserProfile, type UserLyceeGrades, type UserProfile } from "../types/userProfile";
 
 const STORAGE_KEY = "v1_user_profile_leo_poc";
 
@@ -36,9 +36,14 @@ function loadProfile(): UserProfile {
     if (!raw) return defaultsFromCanonical();
     const parsed = JSON.parse(raw) as Partial<UserProfile>;
     const base = emptyUserProfile();
+    const lycee =
+      parsed.lycee_grades && typeof parsed.lycee_grades === "object" && !Array.isArray(parsed.lycee_grades)
+        ? (parsed.lycee_grades as UserLyceeGrades)
+        : {};
     return {
       ...base,
       ...parsed,
+      lycee_grades: lycee,
       etablissements_favoris: Array.isArray(parsed.etablissements_favoris)
         ? parsed.etablissements_favoris
         : [],

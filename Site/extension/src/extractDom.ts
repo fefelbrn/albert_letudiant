@@ -25,21 +25,151 @@ function hasAny(haystack: string, needles: RegExp[]): boolean {
   return needles.some((re) => re.test(haystack));
 }
 
-function collectPdfLinks(doc: Document, pageUrl: string): string[] {
+/**
+ * Préfixe URL pour filtrer les liens « Fees » du mega-menu.
+ * - Masters HEC : `/en/master-s-programs/<slug>` (les frais sont sous ce slug).
+ * - Bachelor : frais souvent `/en/bachelor-programs/fees-and-financing` sans sous-slug → on garde seulement `/en/bachelor-programs`.
+ */
+function programListingBasePath(pageUrl: string): string | null {
+  try {
+    const parts = new URL(pageUrl).pathname.replace(/\/$/, "").split("/").filter(Boolean);
+    const idx = parts.findIndex((p) => p === "master-s-programs" || p === "bachelor-programs");
+    if (idx < 0 || !parts[idx + 1]) return null;
+    if (parts[idx] === "bachelor-programs") {
+      return `/${parts.slice(0, idx + 1).join("/")}`;
+    }
+    return `/${parts.slice(0, idx + 2).join("/")}`;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function feeLinkBelongsToCurrentProgram(programBase: string | null, feePathname: string): boolean {
+  if (!programBase) return true;
+  const norm = (p: string) => p.replace(/\/$/, "");
+  const base = norm(programBase);
+  const link = norm(feePathname);
+  if (!/(fees-and-financing|frais-et-financement|academic-fees)/i.test(link)) return false;
+  return link.startsWith(`${base}/`);
+}
+
+/** PDF + <a> + URLs présentes seulement dans le HTML (JSON Drupal, dataLayer…) — ex. HEC sans href sur le bouton. */
+function collectBrochureLinks(doc: Document, pageUrl: string): string[] {
   const base = new URL(pageUrl);
   const out: string[] = [];
+  const brochureHref = /brochure|plaquette|downloadform|download-form|request-brochure|demande-brochure|get-the-brochure/i;
+  const brochureText =
+    /download\s+(?:the\s+)?brochure|télécharger\s+(?:la\s+)?brochure|demande\s+de\s+brochure|request\s+(?:a\s+)?brochure|receive\s+(?:our\s+)?brochure|obtenir\s+(?:la\s+)?brochure/i;
+
   for (const a of doc.querySelectorAll("a[href]")) {
     const href = a.getAttribute("href");
     if (!href || href.startsWith("javascript:")) continue;
     try {
       const abs = new URL(href, base).href;
-      if (!/\.pdf(\?|#|$)/i.test(abs)) continue;
-      out.push(abs);
+      const hrefLow = abs.toLowerCase();
+      if (/\.pdf(\?|#|$)/i.test(abs)) {
+        out.push(abs);
+        continue;
+      }
+      if (brochureHref.test(hrefLow)) {
+        out.push(abs);
+        continue;
+      }
+      const linkText = (a.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (brochureText.test(linkText)) {
+        out.push(abs);
+      }
     } catch {
       /* ignore */
     }
   }
-  return uniq(out, 16);
+
+  const raw = doc.documentElement?.outerHTML ?? "";
+  const seen = new Set(out.map((u) => u.toLowerCase()));
+  const fromInline = /https?:\/\/[^\s"'<>]+brochure[^\s"'<>]*/gi;
+  let im: RegExpExecArray | null;
+  while ((im = fromInline.exec(raw)) !== null) {
+    let u = im[0].replace(/&amp;/g, "&").replace(/[),.]+$/, "");
+    if (seen.has(u.toLowerCase())) continue;
+    seen.add(u.toLowerCase());
+    out.push(u);
+  }
+
+  return uniq(out, 24);
+}
+
+/** Liens « frais / financement » — filtrés sur le programme courant pour éviter le mega-menu (autres masters). */
+function collectTuitionNavHints(
+  doc: Document,
+  pageUrl: string,
+  pageText: string,
+  programBase: string | null,
+): string[] {
+  const base = new URL(pageUrl);
+  const out: string[] = [];
+  const seenUrl = new Set<string>();
+
+  const feeLike = /fees?\s+and\s+financ|fees?\s*&\s*financ|financing|frais\s+et\s+financement|tuition\s*(?:fees|and)|frais\s+de\s+scolarit|student\s+fees|cost\s+of\s+(?:the\s+)?(?:program|studies)|prix\s+de\s+la\s+formation/i;
+
+  for (const a of doc.querySelectorAll("a[href]")) {
+    const href = a.getAttribute("href");
+    if (!href || href.startsWith("javascript:")) continue;
+    let abs: string;
+    try {
+      abs = new URL(href, base).href;
+    } catch {
+      continue;
+    }
+    if (seenUrl.has(abs)) continue;
+
+    const t = (a.textContent ?? "").replace(/\s+/g, " ").trim();
+    const tLow = t.toLowerCase();
+    let pathname = "";
+    try {
+      pathname = new URL(abs).pathname;
+    } catch {
+      /* ignore */
+    }
+    const hay = `${tLow} ${pathname.toLowerCase()} ${abs.toLowerCase()}`;
+
+    if (!feeLike.test(hay)) continue;
+    if (!feeLinkBelongsToCurrentProgram(programBase, pathname)) continue;
+    if (/^javascript:/i.test(abs)) continue;
+    if (/scholarship|bourse|financial\s+aid|aide\s+financière/i.test(tLow) && !/fee|frais|tuition|scolarit/i.test(tLow)) {
+      continue;
+    }
+
+    seenUrl.add(abs);
+    const label = t.length > 0 && t.length < 72 ? ` « ${t} »` : "";
+    out.push(`Frais / financement${label} → ${abs}`);
+    if (out.length >= 8) break;
+  }
+
+  if (out.length === 0 && feeLike.test(pageText)) {
+    out.push(
+      "Mention « fees / financing » (ou équivalent) dans le texte — montants souvent sur une page dédiée ; cherche l’onglet ou le lien du programme.",
+    );
+  }
+
+  return uniq(out, 10);
+}
+
+/** Salaires type « €61K average starting salary » (ordre chiffre puis libellé — regex classiques ratent). */
+function extractSalaryEuroKHints(text: string): string[] {
+  const out: string[] = [];
+  const re = /(?:€|EUR)\s*(\d{1,3})\s*K\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const i = m.index;
+    const win = text.slice(Math.max(0, i - 95), Math.min(text.length, i + m[0].length + 95)).toLowerCase();
+    if (
+      /(salary|salaire|starting|compensation|package|remuner|gross|pay|wage|embauche|graduate)/i.test(win)
+    ) {
+      out.push(`Salaire à l’embauche (extrait) : ${m[0].replace(/\s+/g, " ").trim()}`);
+    }
+  }
+  return out;
 }
 
 function scoreQuantitative(text: string): number {
@@ -103,6 +233,7 @@ function parseMoneyNumber(raw: string): number | null {
 export function extractProgramFromDocument(doc: Document, url: string): ProgramIntel {
   const title = doc.title || "";
   const hostname = new URL(url).hostname;
+  const programBase = programListingBasePath(url);
 
   const article = doc.querySelector("article");
   const main = doc.querySelector("main");
@@ -116,9 +247,9 @@ export function extractProgramFromDocument(doc: Document, url: string): ProgramI
   const text = (clone.textContent ?? "").replace(/\s+/g, " ").trim();
   const textLow = text.toLowerCase();
 
-  const brochurePdfUrls = collectPdfLinks(doc, url);
+  const brochurePdfUrls = collectBrochureLinks(doc, url);
 
-  const tuitionHints: string[] = [];
+  const tuitionHints: string[] = [...collectTuitionNavHints(doc, url, text, programBase)];
   const tuitionRes =
     /(?:tuition|fees?\s+and|program(?:me)?\s+fees?|frais\s+de\s+scolarit|cost\s+of\s+(?:the\s+)?program|prix\s+de\s+la\s+formation|montant\s+des?\s+frais)[\s\S]{0,140}?(\d{1,3}(?:[\s,\u00A0]\d{3})+|\d{2,})\s*(?:€|EUR|euros?)/gi;
   let m: RegExpExecArray | null;
@@ -147,7 +278,7 @@ export function extractProgramFromDocument(doc: Document, url: string): ProgramI
     }
   }
 
-  const salaryHints: string[] = [];
+  const salaryHints: string[] = [...extractSalaryEuroKHints(text)];
   const salaryCtx =
     /\b(salary|salaire|remuneration|rémunération|compensation|starting\s+salary|average\s+salary|graduate\s+salary|gross\s+annual|package)\b[\s\S]{0,100}?((?:€|EUR)\s*\d{1,3}(?:[\s,\u00A0]\d{3})*(?:k|\s000)?|\d{2,3}\s*k€)/gi;
   while ((m = salaryCtx.exec(text)) !== null) {

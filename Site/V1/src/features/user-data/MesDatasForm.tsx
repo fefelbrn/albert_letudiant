@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { useUserProfile } from "../../state/UserProfileContext";
+import { BulletinPdfImport } from "./BulletinPdfImport";
 
 const NIVEAUX = [
   "2nde",
@@ -135,6 +136,7 @@ export function MesDatasForm() {
 
         <section className="user-data__section user-data__section--wide">
           <h4>Bulletins</h4>
+          <BulletinPdfImport />
           <label className="field field--full">
             <span>Synthèse / notes importantes</span>
             <textarea
@@ -145,11 +147,11 @@ export function MesDatasForm() {
             />
           </label>
           <label className="field field--full">
-            <span>Pièces jointes (simulation)</span>
+            <span>Dernier fichier analysé (référence)</span>
             <input
               value={profile.bulletins_fichiers_note}
               onChange={(e) => updateProfile({ bulletins_fichiers_note: e.target.value })}
-              placeholder="ex. bulletin_T1.pdf — dépôt fichier à brancher plus tard"
+              placeholder="Rempli automatiquement après import PDF — tu peux éditer"
             />
           </label>
         </section>

@@ -1,4 +1,5 @@
-import { canonicalStudentLead } from "../../data/canonicalStudentLead";
+import { useMemo } from "react";
+import { buildStudentLeadFromProfile } from "../../domain/userProfileStudent";
 import {
   LYCEE_MATIERES,
   TRIMESTRES,
@@ -9,15 +10,22 @@ import {
   listSupGrades,
   lyceeGradeValues,
 } from "../../domain/studentLeadAnalytics";
+import { useUserProfile } from "../../state/UserProfileContext";
 import type { StudentLead } from "../../types/studentLead";
 import { CompetenceRadar } from "./CompetenceRadar";
 import { LyceeHeatmap } from "./LyceeHeatmap";
 
 type Props = {
+  /** Surcharge pour tests / story ; sinon profil « Mes datas » + CSV canon. */
   student?: StudentLead;
 };
 
-export function CandidateProfileDashboard({ student = canonicalStudentLead }: Props) {
+export function CandidateProfileDashboard({ student: studentProp }: Props) {
+  const { profile } = useUserProfile();
+  const student = useMemo(
+    () => studentProp ?? buildStudentLeadFromProfile(profile),
+    [studentProp, profile],
+  );
   const lyceeVals = lyceeGradeValues(student);
   const moyLycee = averageNumeric(lyceeVals);
 
@@ -79,7 +87,7 @@ export function CandidateProfileDashboard({ student = canonicalStudentLead }: Pr
         <section className="candidate-panel candidate-panel--wide">
           <header className="candidate-panel__head">
             <h4>Notes lycée</h4>
-            <p>Vue matière × période (données CSV étudiants)</p>
+            <p>Vue matière × période — import PDF depuis l’onglet Mes datas pour compléter.</p>
           </header>
           <LyceeHeatmap student={student} />
         </section>

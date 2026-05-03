@@ -38,7 +38,7 @@ export type ProgramIntel = {
   /** Extrait utile pour debug / futur LLM */
   textFingerprint: string;
   headings: string[];
-  /** Liens brochure / PDF repérés sur la page */
+  /** Liens brochure : PDF + formulaires / pages « download brochure » (souvent sans .pdf) */
   brochurePdfUrls: string[];
   kpis: ProgramKpis;
 };

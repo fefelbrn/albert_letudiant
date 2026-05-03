@@ -198,7 +198,7 @@ function renderKpis(intel: ProgramIntel): HTMLElement {
     el("p", {
       className: "card__sub",
       textContent:
-        "Chaque ligne cite un bout de texte autour du chiffre pour que tu voies le contexte (comme sur le site). Si une case est vide, la page est peut‑être chargée en JS ou le texte est dans un PDF — ouvre les brochures ci‑dessous.",
+        "Chaque ligne cite un bout de texte autour du chiffre pour que tu voies le contexte (comme sur le site). Si une case est vide, le contenu peut être chargé en JS, dans un PDF, ou sur une autre page (brochure via formulaire, frais via « fees & financing », etc.).",
     }),
   );
 
@@ -221,7 +221,7 @@ function renderKpis(intel: ProgramIntel): HTMLElement {
   };
 
   const pdfs = intel.brochurePdfUrls ?? [];
-  add("Brochures / PDF sur la page", pdfs);
+  add("Brochures / ressources (PDF, formulaires)", pdfs);
 
   add("Frais / scolarité", [...intel.kpis.tuitionHints, ...intel.kpis.signingBonusHints]);
   add("Salaires à l’embauche (si mentionnés)", intel.kpis.salaryHints);
@@ -331,7 +331,7 @@ function mailBodyForFavorite(f: FavoriteEntry): string {
     `École (estimation) : ${f.schoolGuess}`,
     `Page : ${f.url}`,
     "",
-    "PDF / brochures repérées :",
+    "Brochures / ressources (PDF ou liens) :",
   ];
   for (const pdf of f.intel.brochurePdfUrls ?? []) {
     lines.push(`- ${pdf}`);

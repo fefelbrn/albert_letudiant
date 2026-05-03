@@ -3,7 +3,7 @@ import ForceGraph2D from "react-force-graph-2d";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { GraphNode, GraphResponse } from "../types/linkageGraph";
-import { apiUrl } from "../lib/apiBase";
+import { apiUrl, getApiOrigin } from "../lib/apiBase";
 import { useUserProfile } from "../state/UserProfileContext";
 
 type LinkObject = {
@@ -96,6 +96,13 @@ export function LinkagePage() {
       try {
         setLoading(true);
         setError(null);
+        if (import.meta.env.PROD && !getApiOrigin()) {
+          setError(
+            "Linkage en production : ajoute la variable VITE_API_BASE_URL dans Vercel (Settings → Environment Variables), " +
+              "valeur = l’URL de ton API Render sans slash final (ex. https://albert-letudiant.onrender.com), puis redeploie le front.",
+          );
+          return;
+        }
         const urlEmail = searchParams.get("centerEmail")?.trim().toLowerCase() ?? "";
         const urlPrenom = searchParams.get("centerPrenom")?.trim().toLowerCase() ?? "";
         const urlNom = searchParams.get("centerNom")?.trim().toLowerCase() ?? "";
@@ -136,9 +143,11 @@ export function LinkagePage() {
         });
       } catch (fetchError) {
         if (!(fetchError instanceof DOMException && fetchError.name === "AbortError")) {
-          setError(
-            "Le service Linkage est indisponible. En production, configure VITE_API_BASE_URL vers ton API, ou lance le backend + Neo4j en local.",
-          );
+          const hint =
+            import.meta.env.PROD && !getApiOrigin()
+              ? "Configure VITE_API_BASE_URL sur Vercel vers ton backend Render."
+              : "En production, VITE_API_BASE_URL doit pointer vers l’API ; en local, lance le backend (port 4000) + Neo4j.";
+          setError(`Le service Linkage est indisponible. ${hint}`);
         }
       } finally {
         setLoading(false);

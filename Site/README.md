@@ -162,15 +162,17 @@ L'onglet `Linkage` est disponible dans la navbar.
 
 ## 6) Deploiement Vercel (Linkage)
 
-Le front utilise par defaut `/api/...` en local via le proxy Vite.
+En **local**, les appels `/api/...` passent par le proxy Vite vers `localhost:4000`.
 
-En production (Vercel), il faut definir l'origine de ton API:
+En **production (Vercel)**, sans variable d’environnement le graphe Linkage **ne peut pas** joindre l’API : le navigateur appelle `/api` sur le domaine Vercel, qui n’existe pas.
 
-- `VITE_API_BASE_URL` = `https://ton-api.example.com` (sans slash final)
+1. Dans **Vercel** → ton projet → **Settings** → **Environment Variables** : ajoute  
+   **`VITE_API_BASE_URL`** = l’URL exacte de ton service **Render** (ou autre host du `server.js`), **sans** `/` final.  
+   Exemple : `https://albert-letudiant.onrender.com`
+2. **Redeploie** le front (Redeploy) pour que le build embarque cette valeur (`import.meta.env.VITE_*` est injecté au build).
+3. Vérifie que le backend Render a bien `NEO4J_*` et répond sur `GET /api/health`.
 
-Puis redeployer le projet Vercel.
-
-Note: sur Vercel, le **Root Directory** doit pointer vers `Site/V1` si ton repo contient aussi `extension/` a la racine.
+Note: le **Root Directory** Vercel doit être `Site/V1` si le repo n’est pas uniquement le front.
 
 ## Arreter les services
 

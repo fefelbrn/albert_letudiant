@@ -225,6 +225,7 @@ app.get("/api/linkage/graph", async (req, res) => {
     WITH center, [p IN paths1 WHERE p IS NOT NULL] + [p IN paths2 WHERE p IS NOT NULL] + [p IN pathsAmb WHERE p IS NOT NULL] AS allPaths
     UNWIND allPaths AS p
     UNWIND relationships(p) AS rel
+    WITH center, rel
     WHERE size($relationshipTypes) = 0 OR type(rel) IN $relationshipTypes
     WITH center, collect(DISTINCT rel) AS allRels
     WITH center, allRels, size(allRels) AS totalRelations

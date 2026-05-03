@@ -24,6 +24,66 @@
   font-size: 13px;
 }
 
+.linkage-controls-intro {
+  margin: 0 0 12px;
+  color: #3f4655;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.linkage-slider-block {
+  background: #f6f7fb;
+  border: 1px solid #e8eaf1;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.linkage-slider-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.linkage-slider-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2532;
+}
+
+.linkage-slider-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 15px;
+  color: #c2185b;
+}
+
+.linkage-slider-help {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #666d7e;
+}
+
+.linkage-slider-block input[type="range"] {
+  width: 100%;
+  accent-color: #c2185b;
+}
+
+.linkage-chips-heading {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2532;
+}
+
+.linkage-apply-btn {
+  width: 100%;
+  margin-top: 4px;
+  justify-content: center;
+}
+
 .linkage-hint {
   margin: 10px 0 0;
   color: #666d7e;
@@ -43,12 +103,8 @@
 .linkage-controls {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 8px;
-  margin: 8px 0 12px;
-}
-
-.linkage-controls input[type="range"] {
-  width: 100%;
+  gap: 12px;
+  margin: 4px 0 12px;
 }
 
 .linkage-controls select {

@@ -28,19 +28,26 @@ const nodePalette: Record<string, string> = {
   Program: "#43A047",
   Ambassador: "#8E24AA",
   City: "#FB8C00",
-  User: "#1F1F1F",
   SourceLead: "#00897B",
   NiveauScolaire: "#6D4C41",
   TypeEtablissement: "#5E35B1",
 };
 
-function normalizeName(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ");
+/** Libellés français pour l’interface (les types API restent en anglais). */
+const typeLabelFr: Record<string, string> = {
+  Student: "Élèves",
+  School: "Écoles",
+  Program: "Formations",
+  Ambassador: "Ambassadeurs",
+  City: "Villes",
+  SourceLead: "Sources",
+  NiveauScolaire: "Niveaux scolaires",
+  TypeEtablissement: "Types d’établissement",
+  User: "Comptes",
+};
+
+function labelForGraphType(type: string) {
+  return typeLabelFr[type] ?? type;
 }
 
 function asNodeId(ref: string | GraphNode) {
@@ -61,10 +68,8 @@ function getPrimaryNodeInfo(node: GraphNode) {
       return `Ville: ${baseName}`;
     case "Student":
       return `Eleve: ${baseName}`;
-    case "User":
-      return `Mon profil: ${baseName}`;
     case "SourceLead":
-      return `Source lead: ${baseName}`;
+      return `Source: ${baseName}`;
     case "NiveauScolaire":
       return `Niveau: ${baseName}`;
     case "TypeEtablissement":
@@ -81,9 +86,14 @@ export function LinkagePage() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [activeTypes, setActiveTypes] = useState<string[]>([]);
-  const [maxEdges, setMaxEdges] = useState(220);
-  const [perNodeLimit, setPerNodeLimit] = useState(10);
-  const [maxNodes, setMaxNodes] = useState(96);
+  /** Curseurs : brouillon jusqu’au clic sur Recharger */
+  const [draftMaxEdges, setDraftMaxEdges] = useState(220);
+  const [draftPerNodeLimit, setDraftPerNodeLimit] = useState(10);
+  const [draftMaxNodes, setDraftMaxNodes] = useState(96);
+  /** Paramètres réellement envoyés à l’API */
+  const [appliedMaxEdges, setAppliedMaxEdges] = useState(220);
+  const [appliedPerNodeLimit, setAppliedPerNodeLimit] = useState(10);
+  const [appliedMaxNodes, setAppliedMaxNodes] = useState(96);
   const [requestVersion, setRequestVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,14 +114,16 @@ export function LinkagePage() {
         const centerNom = urlNom || (profile.nom || "").trim().toLowerCase();
         const urlPerNode = Number(searchParams.get("perNodeLimit") ?? "");
         const effectivePerNode =
-          Number.isFinite(urlPerNode) && urlPerNode >= 3 && urlPerNode <= 25 ? urlPerNode : perNodeLimit;
+          Number.isFinite(urlPerNode) && urlPerNode >= 3 && urlPerNode <= 25
+            ? urlPerNode
+            : appliedPerNodeLimit;
 
         const query = new URLSearchParams({
           centerEmail,
           centerPrenom,
           centerNom,
-          maxEdges: String(maxEdges),
-          maxNodes: String(maxNodes),
+          maxEdges: String(appliedMaxEdges),
+          maxNodes: String(appliedMaxNodes),
           perNodeLimit: String(effectivePerNode),
         });
         const response = await fetch(apiUrl(`/api/linkage/graph?${query.toString()}`), {
@@ -126,10 +138,9 @@ export function LinkagePage() {
         setSelectedNode(null);
         setHoveredNode(null);
         setActiveTypes((current) => {
-          const apiTypes = Array.from(new Set(payload.nodes.map((node) => node.type)));
-          const discoveredTypes = Array.from(new Set(["User", ...apiTypes]));
+          const discoveredTypes = Array.from(new Set(payload.nodes.map((node) => node.type)));
           if (current.length === 0) {
-            return discoveredTypes.length > 0 ? discoveredTypes : ["User"];
+            return discoveredTypes.length > 0 ? discoveredTypes : [];
           }
           const next = current.filter((type) => discoveredTypes.includes(type));
           return next.length > 0 ? next : discoveredTypes;
@@ -137,8 +148,8 @@ export function LinkagePage() {
       } catch (fetchError) {
         if (!(fetchError instanceof DOMException && fetchError.name === "AbortError")) {
           setError(
-            "Le service Linkage est indisponible. Vérifie que l’API Render répond (/api/health), que le CORS est OK, " +
-              "ou en local que le backend tourne sur le port 4000 avec Neo4j.",
+            "Impossible d’afficher la carte du réseau pour le moment. Réessaie dans un instant ; si ça continue, " +
+              "vérifie ta connexion ou que le service de démo est bien lancé.",
           );
         }
       } finally {
@@ -149,9 +160,9 @@ export function LinkagePage() {
     void loadGraph();
     return () => controller.abort();
   }, [
-    maxEdges,
-    maxNodes,
-    perNodeLimit,
+    appliedMaxEdges,
+    appliedMaxNodes,
+    appliedPerNodeLimit,
     profile.email,
     profile.nom,
     profile.prenom,
@@ -159,137 +170,32 @@ export function LinkagePage() {
     searchParams.toString(),
   ]);
 
-  const graphWithUser = useMemo(() => {
-    const fullName = `${profile.prenom} ${profile.nom}`.trim();
-    const userLabel = fullName || profile.email || "Utilisateur";
-
-    const userNode: GraphNodeWithPhysics = {
-      id: "current-user-node",
-      label: userLabel,
-      type: "User",
-      fx: 0,
-      fy: 0,
-      properties: {
-        age: profile.age || null,
-        niveau_scolaire: profile.niveau_scolaire || null,
-        etablissement_actuel: profile.etablissement_actuel || null,
-        ville: profile.ville || null,
-        favoris: profile.etablissements_favoris.join(", ") || null,
-      },
-    };
-
-    const schoolNodes = graph.nodes.filter((node) => node.type === "School");
-    const schoolByName = new Map(
-      schoolNodes.map((school) => [
-        normalizeName(String(school.properties.name ?? school.label)),
-        school.id,
-      ]),
-    );
-
-    const favoriteSchoolIds = profile.etablissements_favoris
-      .map((favorite) => {
-        const normalizedFavorite = normalizeName(favorite);
-        const directMatch = schoolByName.get(normalizedFavorite);
-        if (directMatch) return directMatch;
-
-        const bestContains = schoolNodes.find((school) =>
-          normalizeName(String(school.properties.name ?? school.label)).includes(normalizedFavorite),
-        );
-        if (bestContains) return bestContains.id;
-
-        const reverseContains = schoolNodes.find((school) =>
-          normalizedFavorite.includes(normalizeName(String(school.properties.name ?? school.label))),
-        );
-        return reverseContains?.id;
-      })
-      .filter((id): id is string => Boolean(id));
-
-    const userLinks = favoriteSchoolIds.map((schoolId, index) => ({
-      id: `user-follows-${index}-${schoolId}`,
-      source: userNode.id,
-      target: schoolId,
-      type: "FOLLOWS",
-      properties: {},
-    }));
-
-    const profileMail = (profile.email || "").trim().toLowerCase();
-    const profileFirst = (profile.prenom || "").trim().toLowerCase();
-    const profileLast = (profile.nom || "").trim().toLowerCase();
-    const mirroredStudent = graph.nodes.find((n) => {
-      if (n.type !== "Student") return false;
-      const em = String(n.properties.email ?? "").trim().toLowerCase();
-      if (profileMail && em === profileMail) return true;
-      const p = String(n.properties.prenom ?? "").trim().toLowerCase();
-      const nom = String(n.properties.nom ?? "").trim().toLowerCase();
-      return profileFirst !== "" && profileLast !== "" && p === profileFirst && nom === profileLast;
-    });
-
-    const profileMirrorEdges = mirroredStudent
-      ? [
-          {
-            id: "user-profile-as-student",
-            source: userNode.id,
-            target: mirroredStudent.id,
-            type: "PROFIL_COMPTE",
-            properties: {},
-          },
-        ]
-      : [];
-
-    const ambassadorById = new Map(
-      graph.nodes.filter((node) => node.type === "Ambassador").map((node) => [node.id, node]),
-    );
-
-    const ambassadorLinks = graph.edges
-      .filter((edge) => {
-        const sourceId = asNodeId(edge.source);
-        const targetId = asNodeId(edge.target);
-        const schoolToAmbassador =
-          favoriteSchoolIds.includes(sourceId) && ambassadorById.has(targetId);
-        const ambassadorToSchool =
-          favoriteSchoolIds.includes(targetId) && ambassadorById.has(sourceId);
-        return schoolToAmbassador || ambassadorToSchool;
-      })
-      .map((edge, index) => {
-        const sourceId = asNodeId(edge.source);
-        const targetId = asNodeId(edge.target);
-        const ambassadorId = ambassadorById.has(sourceId) ? sourceId : targetId;
-        return {
-          id: `user-ambassador-${index}-${ambassadorId}`,
-          source: userNode.id,
-          target: ambassadorId,
-          type: "CONNECTED_TO_AMBASSADOR",
-          properties: {},
-        };
-      });
-
-    return {
-      nodes: [userNode, ...graph.nodes],
-      edges: [...graph.edges, ...userLinks, ...ambassadorLinks, ...profileMirrorEdges],
-    };
-  }, [graph.edges, graph.nodes, profile]);
+  const linkageGraph = useMemo(
+    () => ({ nodes: graph.nodes, edges: graph.edges }),
+    [graph.edges, graph.nodes],
+  );
 
   const availableTypes = useMemo(
     () =>
-      Array.from(new Set(graphWithUser.nodes.map((node) => node.type))).sort((a, b) =>
+      Array.from(new Set(linkageGraph.nodes.map((node) => node.type))).sort((a, b) =>
         a.localeCompare(b),
       ),
-    [graphWithUser.nodes],
+    [linkageGraph.nodes],
   );
 
   const filteredGraph = useMemo(() => {
     const nodeIds = new Set(
-      graphWithUser.nodes
+      linkageGraph.nodes
         .filter((node) => activeTypes.includes(node.type))
         .map((node) => node.id),
     );
     return {
-      nodes: graphWithUser.nodes.filter((node) => nodeIds.has(node.id)),
-      links: graphWithUser.edges.filter(
+      nodes: linkageGraph.nodes.filter((node) => nodeIds.has(node.id)),
+      links: linkageGraph.edges.filter(
         (edge) => nodeIds.has(asNodeId(edge.source)) && nodeIds.has(asNodeId(edge.target)),
       ),
     };
-  }, [activeTypes, graphWithUser.edges, graphWithUser.nodes]);
+  }, [activeTypes, linkageGraph.edges, linkageGraph.nodes]);
 
   useEffect(() => {
     isLayoutPinned.current = false;
@@ -315,70 +221,104 @@ export function LinkagePage() {
   return (
     <main className="section container linkage-page">
       <div className="linkage-header">
-        <h2>Linkage - graphe du reseau</h2>
+        <h2>Ton réseau sur la carte</h2>
         <p className="section-sub">
-          Explore les connexions entre eleves, ecoles et programmes via la base graphe.
+          Visualise d’un coup d’œil les liens entre élèves, écoles, villes et ambassadeurs autour de ton profil.
         </p>
       </div>
 
-      {loading ? <p>Chargement du graphe...</p> : null}
+      {loading ? <p>Chargement de la carte…</p> : null}
       {error ? <p className="linkage-error">{error}</p> : null}
 
       {!loading && !error ? (
         <>
           <section className="linkage-filters">
-            <h3>Filtrer les noeuds</h3>
+            <h3>Réglages d’affichage</h3>
             <p className="linkage-meta">
-              {stats.nodes} noeuds - {stats.links} connexions
+              Vue actuelle : <strong>{stats.nodes}</strong> profils et lieux · <strong>{stats.links}</strong> liens sur la
+              carte
               {graph.meta?.maxNodes != null ? (
                 <>
                   {" "}
-                  (plafond API: {graph.meta.maxNodes} noeuds)
+                  — affichage plafonné à <strong>{graph.meta.maxNodes}</strong> points pour garder la carte lisible
                 </>
               ) : null}
-              {graph.meta?.graphEngine === "neighborhood" ? <> — moteur: voisinage + ambassadeurs</> : null}
+            </p>
+            <p className="linkage-controls-intro">
+              Ajuste les curseurs comme tu veux, puis clique sur « Mettre à jour la carte » pour recalculer le réseau.
             </p>
             <div className="linkage-controls">
-              <label htmlFor="linkage-max-edges">
-                Max relations analysees: <strong>{maxEdges}</strong>
-              </label>
-              <input
-                id="linkage-max-edges"
-                type="range"
-                min={40}
-                max={280}
-                step={20}
-                value={maxEdges}
-                onChange={(event) => setMaxEdges(Number(event.target.value))}
-              />
-              <label htmlFor="linkage-max-nodes">
-                Max noeuds affiches: <strong>{maxNodes}</strong>
-              </label>
-              <input
-                id="linkage-max-nodes"
-                type="range"
-                min={32}
-                max={120}
-                step={4}
-                value={maxNodes}
-                onChange={(event) => setMaxNodes(Number(event.target.value))}
-              />
-              <label htmlFor="linkage-per-node">
-                Max arêtes / nœud pivot: <strong>{perNodeLimit}</strong>
-              </label>
-              <input
-                id="linkage-per-node"
-                type="range"
-                min={4}
-                max={20}
-                step={1}
-                value={perNodeLimit}
-                onChange={(event) => setPerNodeLimit(Number(event.target.value))}
-              />
-              <button type="button" className="btn btn-soft" onClick={() => setRequestVersion((v) => v + 1)}>
-                Recharger
+              <div className="linkage-slider-block">
+                <div className="linkage-slider-block-head">
+                  <span className="linkage-slider-title">Étendue du réseau</span>
+                  <span className="linkage-slider-value">{draftMaxEdges}</span>
+                </div>
+                <p className="linkage-slider-help">
+                  Plus tu montes le curseur, plus on explore de liens autour de toi (écoles, contacts, etc.).
+                </p>
+                <input
+                  id="linkage-max-edges"
+                  type="range"
+                  min={40}
+                  max={280}
+                  step={20}
+                  value={draftMaxEdges}
+                  onChange={(event) => setDraftMaxEdges(Number(event.target.value))}
+                  aria-label="Étendue du réseau"
+                />
+              </div>
+              <div className="linkage-slider-block">
+                <div className="linkage-slider-block-head">
+                  <span className="linkage-slider-title">Nombre de points sur la carte</span>
+                  <span className="linkage-slider-value">{draftMaxNodes}</span>
+                </div>
+                <p className="linkage-slider-help">
+                  Limite le nombre de profils, écoles et lieux affichés en même temps.
+                </p>
+                <input
+                  id="linkage-max-nodes"
+                  type="range"
+                  min={32}
+                  max={120}
+                  step={4}
+                  value={draftMaxNodes}
+                  onChange={(event) => setDraftMaxNodes(Number(event.target.value))}
+                  aria-label="Nombre de points sur la carte"
+                />
+              </div>
+              <div className="linkage-slider-block">
+                <div className="linkage-slider-block-head">
+                  <span className="linkage-slider-title">Liens par profil au centre</span>
+                  <span className="linkage-slider-value">{draftPerNodeLimit}</span>
+                </div>
+                <p className="linkage-slider-help">
+                  Pour chaque personne au cœur du réseau, combien de connexions au maximum on affiche.
+                </p>
+                <input
+                  id="linkage-per-node"
+                  type="range"
+                  min={4}
+                  max={20}
+                  step={1}
+                  value={draftPerNodeLimit}
+                  onChange={(event) => setDraftPerNodeLimit(Number(event.target.value))}
+                  aria-label="Liens par profil au centre"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary linkage-apply-btn"
+                onClick={() => {
+                  setAppliedMaxEdges(draftMaxEdges);
+                  setAppliedMaxNodes(draftMaxNodes);
+                  setAppliedPerNodeLimit(draftPerNodeLimit);
+                  setRequestVersion((v) => v + 1);
+                }}
+              >
+                Mettre à jour la carte
               </button>
             </div>
+            <h4 className="linkage-chips-heading">Afficher sur la carte</h4>
             <div className="chips">
               {availableTypes.map((type) => (
                 <button
@@ -387,30 +327,31 @@ export function LinkagePage() {
                   className={`chip ${activeTypes.includes(type) ? "chip-active" : ""}`}
                   onClick={() => toggleType(type)}
                 >
-                  {type}
+                  {labelForGraphType(type)}
                 </button>
               ))}
             </div>
             <p className="linkage-hint">
-              Le graphe reprend la logique Neo4j « voisinage du Student + ambassadeurs des mêmes écoles », avec une
-              borne par nœud pivot (comme en Aura). L&apos;email du compte doit correspondre à un{' '}
-              <code>Student.email</code> dans la base. Astuce: glisse un nœud pour le repositionner.
+              La carte est construite autour de ton profil élève : même école, ambassadeurs, villes… L’adresse e-mail
+              de ton compte doit correspondre à un élève présent dans la base de démo. Astuce : tu peux faire glisser
+              les pastilles pour mieux les ranger.
             </p>
             {graph.meta?.centerMatched === false ? (
               <p className="linkage-warning">
-                Aucun étudiant Neo4j pour cet email (ou prénom + nom). Vérifie l&apos;import CSV ou l&apos;orthographe
-                de l&apos;email du compte.
+                Aucun profil élève ne correspond à ce compte (e-mail ou prénom + nom). Vérifie les informations du
+                compte ou les données de démo.
               </p>
             ) : null}
             {graph.meta?.truncated ? (
               <p className="linkage-warning">
-                Relations tronquees cote serveur ({graph.meta.returnedEdges}/{graph.meta.totalRelations ?? "?"}).
+                Pour aller plus vite, une partie des liens a été simplifiée ({graph.meta.returnedEdges} affichés sur{" "}
+                {graph.meta.totalRelations ?? "?"} au total).
               </p>
             ) : null}
             {graph.meta?.truncatedNodes ? (
               <p className="linkage-warning">
-                Noeuds limites a {graph.meta.maxNodes} pour lisibilite (avant plafond:{" "}
-                {graph.meta.totalNodesBeforeCap ?? "?"} noeuds).
+                Affichage limité à {graph.meta.maxNodes} points pour la lisibilité (il y en avait{" "}
+                {graph.meta.totalNodesBeforeCap ?? "?"} au total).
               </p>
             ) : null}
           </section>
@@ -421,7 +362,7 @@ export function LinkagePage() {
                 {Object.entries(nodePalette).map(([type, color]) => (
                   <span key={type} className="linkage-legend-item">
                     <i style={{ backgroundColor: color }} />
-                    {type}
+                    {labelForGraphType(type)}
                   </span>
                 ))}
               </div>
@@ -433,7 +374,7 @@ export function LinkagePage() {
                 d3VelocityDecay={isHeavyGraph ? 0.45 : 0.35}
                 nodeLabel={(node) => {
                   const typedNode = node as GraphNode;
-                  return `${getPrimaryNodeInfo(typedNode)} (${typedNode.type})`;
+                  return `${getPrimaryNodeInfo(typedNode)} (${labelForGraphType(typedNode.type)})`;
                 }}
                 nodeRelSize={isHeavyGraph ? 3 : 5}
                 nodeColor={(node) => nodePalette[(node as GraphNode).type] ?? "#6D7483"}
@@ -458,24 +399,12 @@ export function LinkagePage() {
                   isLayoutPinned.current = true;
                 }}
                 linkLabel={(link) => (link as LinkObject).type}
-                linkWidth={(link) => {
-                  const type = (link as LinkObject).type;
-                  if (type === "PROFIL_COMPTE") return 3.2;
-                  return type === "FOLLOWS" || type === "CONNECTED_TO_AMBASSADOR" ? 2.8 : 1.2;
-                }}
-                linkColor={(link) => {
-                  const type = (link as LinkObject).type;
-                  if (type === "PROFIL_COMPTE") return "#b71c5c";
-                  return type === "FOLLOWS" || type === "CONNECTED_TO_AMBASSADOR"
-                    ? "#d5153f"
-                    : "#cfd4dd";
-                }}
+                linkWidth={() => 1.2}
+                linkColor={() => "#cfd4dd"}
                 nodeCanvasObject={(node, ctx, globalScale) => {
                   const typedNode = node as GraphNodeWithPhysics;
                   const label = getPrimaryNodeInfo(typedNode);
-                  const showLabel =
-                    typedNode.type === "User" ||
-                    (pinnedNode !== null && pinnedNode.id === typedNode.id);
+                  const showLabel = pinnedNode !== null && pinnedNode.id === typedNode.id;
                   const fontSize = Math.max(10, 13 / globalScale);
                   ctx.font = `${fontSize}px Inter, sans-serif`;
                   ctx.fillStyle = nodePalette[typedNode.type] ?? "#6D7483";
@@ -483,7 +412,7 @@ export function LinkagePage() {
                   ctx.arc(
                     typedNode.x ?? 0,
                     typedNode.y ?? 0,
-                    typedNode.type === "User" ? 9 : 5,
+                    5,
                     0,
                     2 * Math.PI,
                   );
@@ -497,9 +426,9 @@ export function LinkagePage() {
             </article>
 
             <aside className="linkage-details">
-              <h3>Details du noeud</h3>
+              <h3>Détail d’un profil</h3>
               {!selectedNode ? (
-                <p>Clique sur un noeud pour afficher ses informations.</p>
+                <p>Clique sur une pastille de la carte pour voir les informations détaillées.</p>
               ) : (
                 <>
                   <p>

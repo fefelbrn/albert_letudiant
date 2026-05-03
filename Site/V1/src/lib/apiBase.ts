@@ -1,11 +1,19 @@
 /**
  * Base URL for HTTP API calls.
  * - Local dev: leave VITE_API_BASE_URL unset → same-origin `/api` (Vite proxy → backend).
- * - Production (Vercel): set VITE_API_BASE_URL to your deployed API origin, e.g. https://api.example.com
+ * - Production: prefer `VITE_API_BASE_URL` on Vercel ; if absent, fallback sur l’API Render du déploiement POC.
  */
+const DEFAULT_PROD_API_ORIGIN = "https://albert-letudiant.onrender.com";
+
 export function getApiOrigin(): string {
   const raw = import.meta.env.VITE_API_BASE_URL?.trim();
-  return raw ? raw.replace(/\/+$/, "") : "";
+  if (raw) {
+    return raw.replace(/\/+$/, "");
+  }
+  if (import.meta.env.PROD) {
+    return DEFAULT_PROD_API_ORIGIN.replace(/\/+$/, "");
+  }
+  return "";
 }
 
 export function apiUrl(path: string): string {

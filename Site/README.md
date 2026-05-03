@@ -164,13 +164,9 @@ L'onglet `Linkage` est disponible dans la navbar.
 
 En **local**, les appels `/api/...` passent par le proxy Vite vers `localhost:4000`.
 
-En **production (Vercel)**, sans variable d’environnement le graphe Linkage **ne peut pas** joindre l’API : le navigateur appelle `/api` sur le domaine Vercel, qui n’existe pas.
+En **production (Vercel)**, le front appelle l’API via une **URL absolue**. Le code embarque un **repli** vers `https://albert-letudiant.onrender.com` si `VITE_API_BASE_URL` n’est pas défini (POC). Pour un autre domaine d’API, définis **`VITE_API_BASE_URL`** sur Vercel puis redeploie.
 
-1. Dans **Vercel** → ton projet → **Settings** → **Environment Variables** : ajoute  
-   **`VITE_API_BASE_URL`** = l’URL exacte de ton service **Render** (ou autre host du `server.js`), **sans** `/` final.  
-   Exemple : `https://albert-letudiant.onrender.com`
-2. **Redeploie** le front (Redeploy) pour que le build embarque cette valeur (`import.meta.env.VITE_*` est injecté au build).
-3. Vérifie que le backend Render a bien `NEO4J_*` et répond sur `GET /api/health`.
+Vérifie que le backend Render a bien `NEO4J_*` et répond sur `GET /api/health`.
 
 Note: le **Root Directory** Vercel doit être `Site/V1` si le repo n’est pas uniquement le front.
 

@@ -1,0 +1,52 @@
+.plateformes-page {
+  display: grid;
+  gap: 20px;
+  padding-bottom: 32px;
+}
+
+.plateformes-header .section-sub {
+  max-width: 52rem;
+}
+
+.plateformes-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.plateformes-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.plateformes-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.plateformes-card p {
+  margin: 0;
+  color: #535a6a;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.plateformes-card .btn {
+  width: fit-content;
+}
+
+.plateformes-footnote {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6d7483;
+  max-width: 48rem;
+  line-height: 1.5;
+}

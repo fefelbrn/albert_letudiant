@@ -2,9 +2,24 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../state/AuthContext";
 
-/** Aligné sur le nœud Student Neo4j / CSV id 114 (POC Linkage + HEC). */
-const DEMO_EMAIL = "léo.martin114@mail.fr";
+/** Démo : e-mail en ASCII pour coller à ce que `type="email"` affiche souvent ; léo avec accent marche aussi. */
+const DEMO_EMAIL = "leo.martin114@mail.fr";
 const DEMO_PASSWORD = "motdepasse";
+
+function emailKey(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFKC")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s/g, "");
+}
+
+function emailMatchesDemo(input: string): boolean {
+  return emailKey(input) === emailKey(DEMO_EMAIL);
+}
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -15,10 +30,10 @@ export function LoginPage() {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const email = String(formData.get("email") ?? "").trim().toLowerCase();
-    const password = String(formData.get("password") ?? "");
+    const email = String(formData.get("email") ?? "");
+    const password = String(formData.get("password") ?? "").trim();
 
-    if (email !== DEMO_EMAIL.toLowerCase() || password !== DEMO_PASSWORD) {
+    if (!emailMatchesDemo(email) || password !== DEMO_PASSWORD) {
       setError(`Identifiants incorrects. Compte demo : ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
       return;
     }
@@ -37,10 +52,18 @@ export function LoginPage() {
           Compte demo : <strong>{DEMO_EMAIL}</strong> / <strong>{DEMO_PASSWORD}</strong>
         </p>
         {error ? <p className="linkage-error">{error}</p> : null}
-        <input name="email" type="email" placeholder={DEMO_EMAIL} defaultValue={DEMO_EMAIL} required />
+        <input
+          name="email"
+          type="email"
+          autoComplete="username"
+          placeholder={DEMO_EMAIL}
+          defaultValue={DEMO_EMAIL}
+          required
+        />
         <input
           name="password"
           type="password"
+          autoComplete="current-password"
           placeholder="motdepasse"
           minLength={6}
           defaultValue={DEMO_PASSWORD}

@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "L'Étudiant — Analyse formation",
+  "description": "Extrait les infos clés d'une page programme (frais, débouchés, cursus…) et les compare à ton profil.",
+  "version": "0.1.0",
+  "permissions": ["storage", "activeTab", "scripting", "sidePanel", "tabs"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Ouvrir l'analyse formation"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://albert-letudiant.vercel.app/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["site-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

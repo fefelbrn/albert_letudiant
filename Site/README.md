@@ -156,7 +156,7 @@ npm run dev
 
 Frontend: <http://localhost:5173>
 
-Compte demo simulateur (login) : **`léo.martin114@mail.fr`** / **`motdepasse`** — profil et notes alignés sur le POC Neo4j (Léo Martin, HEC).
+Compte demo simulateur (login) : **`leo.martin114@mail.fr`** (ou `léo…`, même compte) / **`motdepasse`** — profil et notes alignés sur le POC Neo4j (Léo Martin, HEC).
 
 L'onglet `Linkage` est disponible dans la navbar.
 

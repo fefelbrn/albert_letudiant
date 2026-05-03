@@ -5,6 +5,7 @@ import { HomePage } from "./pages/HomePage";
 import { LinkagePage } from "./pages/LinkagePage";
 import { LoginPage } from "./pages/LoginPage";
 import { PrivatePage } from "./pages/PrivatePage";
+import { PlateformesCoursPage } from "./pages/PlateformesCoursPage";
 import { SchoolsPage } from "./pages/SchoolsPage";
 import { useAuth } from "./state/AuthContext";
 
@@ -26,6 +27,7 @@ export function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/schools" element={<SchoolsPage />} />
         <Route path="/linkage" element={<LinkagePage />} />
+        <Route path="/plateformes-cours" element={<PlateformesCoursPage />} />
         <Route
           path="/login"
           element={

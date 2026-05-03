@@ -50,6 +50,39 @@ function labelForGraphType(type: string) {
   return typeLabelFr[type] ?? type;
 }
 
+/** Libellés courts pour les types de relations Neo4j (comme dans le navigateur graphe). */
+const relationshipLabelFr: Record<string, string> = {
+  STUDIES_AT: "Étudie à",
+  STUDIED_AT: "A étudié à",
+  INTERESTED_IN: "Intéressé·e par",
+  LIVES_IN: "Vit à",
+  CONNECTED_TO: "Mise en relation",
+  HAS_NIVEAU: "Niveau scolaire",
+  DISCOVERED_VIA: "Découvert via",
+  HAS_TYPE_ETABLISSEMENT: "Type d’établissement",
+  CATEGORIZED_AS: "Rattaché à",
+  LOCATED_IN: "Localisation",
+  HAS_PROGRAM: "Propose",
+  PARTNERS_WITH: "Partenariat",
+  APPLIED_TO: "Candidature",
+};
+
+function labelForRelationship(type: string) {
+  return relationshipLabelFr[type] ?? type;
+}
+
+function linkEndpoints(link: LinkObject): { sx: number; sy: number; tx: number; ty: number } | null {
+  const s = link.source;
+  const t = link.target;
+  if (typeof s === "string" || typeof t === "string") return null;
+  const sn = s as GraphNodeWithPhysics;
+  const tn = t as GraphNodeWithPhysics;
+  if (typeof sn.x !== "number" || typeof sn.y !== "number" || typeof tn.x !== "number" || typeof tn.y !== "number") {
+    return null;
+  }
+  return { sx: sn.x, sy: sn.y, tx: tn.x, ty: tn.y };
+}
+
 function asNodeId(ref: string | GraphNode) {
   return typeof ref === "string" ? ref : ref.id;
 }
@@ -398,9 +431,76 @@ export function LinkagePage() {
                   });
                   isLayoutPinned.current = true;
                 }}
-                linkLabel={(link) => (link as LinkObject).type}
+                linkLabel={(link) => {
+                  const rel = link as LinkObject;
+                  const neo = rel.type;
+                  return `${neo} — ${labelForRelationship(neo)}`;
+                }}
                 linkWidth={() => 1.2}
                 linkColor={() => "#cfd4dd"}
+                linkCanvasObjectMode={() => "after"}
+                linkCanvasObject={(link, ctx, globalScale) => {
+                  const rel = link as LinkObject;
+                  const ends = linkEndpoints(rel);
+                  if (!ends) return;
+                  const { sx, sy, tx, ty } = ends;
+                  const neo = rel.type;
+                  if (!neo) return;
+                  const mx = (sx + tx) / 2;
+                  const my = (sy + ty) / 2;
+                  const padX = 5 / globalScale;
+                  const padY = 3 / globalScale;
+                  const r = 4 / globalScale;
+                  ctx.textAlign = "center";
+                  ctx.textBaseline = "middle";
+
+                  if (isHeavyGraph) {
+                    const fs = Math.max(6, 8 / globalScale);
+                    ctx.font = `600 ${fs}px ui-monospace, "Cascadia Code", monospace`;
+                    const w = ctx.measureText(neo).width;
+                    const boxW = w + padX * 2;
+                    const boxH = fs + padY * 2;
+                    const left = mx - boxW / 2;
+                    const top = my - boxH / 2;
+                    ctx.fillStyle = "rgba(255,255,255,0.92)";
+                    ctx.strokeStyle = "#c5cad6";
+                    ctx.lineWidth = 1 / globalScale;
+                    ctx.beginPath();
+                    ctx.roundRect(left, top, boxW, boxH, r);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = "#3a4150";
+                    ctx.fillText(neo, mx, my);
+                    return;
+                  }
+
+                  const line1 = neo;
+                  const line2 = labelForRelationship(neo);
+                  const fs1 = Math.max(7, 9 / globalScale);
+                  const fs2 = Math.max(6, 7.5 / globalScale);
+                  ctx.font = `600 ${fs1}px ui-monospace, "Cascadia Code", monospace`;
+                  const w1 = ctx.measureText(line1).width;
+                  ctx.font = `500 ${fs2}px Inter, system-ui, sans-serif`;
+                  const w2 = ctx.measureText(line2).width;
+                  const lineGap = 2 / globalScale;
+                  const boxW = Math.max(w1, w2) + padX * 2;
+                  const boxH = fs1 + fs2 + lineGap + padY * 2;
+                  const left = mx - boxW / 2;
+                  const top = my - boxH / 2;
+                  ctx.fillStyle = "rgba(255,255,255,0.94)";
+                  ctx.strokeStyle = "#c5cad6";
+                  ctx.lineWidth = 1 / globalScale;
+                  ctx.beginPath();
+                  ctx.roundRect(left, top, boxW, boxH, r);
+                  ctx.fill();
+                  ctx.stroke();
+                  ctx.fillStyle = "#1f2532";
+                  ctx.font = `600 ${fs1}px ui-monospace, "Cascadia Code", monospace`;
+                  ctx.fillText(line1, mx, top + padY + fs1 / 2);
+                  ctx.fillStyle = "#5c6478";
+                  ctx.font = `500 ${fs2}px Inter, system-ui, sans-serif`;
+                  ctx.fillText(line2, mx, top + padY + fs1 + lineGap + fs2 / 2);
+                }}
                 nodeCanvasObject={(node, ctx, globalScale) => {
                   const typedNode = node as GraphNodeWithPhysics;
                   const label = getPrimaryNodeInfo(typedNode);

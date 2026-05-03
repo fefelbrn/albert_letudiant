@@ -6,37 +6,67 @@ export type TrimKey = (typeof TRIMESTRES)[number];
 export type BulletinParseResult = {
   annee: LyceeAnneeKey | null;
   trimestre: TrimKey | null;
-  /** Moyennes détectées par matière (une ligne peut alimenter une seule matière). */
   matieres: Partial<Record<LyceeMatiere, number>>;
-  /** Détail brut pour debug UI */
   matched: { matiere: LyceeMatiere; note: number; ligne: string }[];
   warnings: string[];
 };
 
-const SUBJECT_RULES: { test: (line: string) => boolean; matiere: LyceeMatiere }[] = [
-  { test: (l) => /math[ée]mat|sp[ée]cialit[ée].*math|^maths?\b/i.test(l), matiere: "maths" },
+/** Règle : ancre = libellé matière dans la ligne ; la note est cherchée après l’ancre (évite les chiffres de l’adresse avant le mot « Maths »). */
+type SubjectRule = { matiere: LyceeMatiere; anchor: RegExp };
+
+const SUBJECT_RULES: SubjectRule[] = [
+  { matiere: "maths", anchor: /math[ée]matiques?|\bmaths?\b|sp[ée]cialit[ée][\s\w]*math/i },
   {
-    test: (l) =>
-      /sciences\s+[ée]conomiques|^\s*ses\b|économie\s+approfondie|économie\s+et\s+gestion/i.test(l),
     matiere: "physique_ou_eco",
+    anchor:
+      /sciences\s+[ée]conomiques\s+et\s+sociales|sciences\s+[ée]conomiques\b|économie\s+approfondie|économie\s+et\s+gestion|économie\s+g[ée]n[ée]rale/i,
   },
   {
-    test: (l) =>
-      /physique|chimie|si\b|science(s)?\s+de\s+l['’]ing[ée]nieur|enseignement\s+scientifique/i.test(
-        l,
-      ),
     matiere: "physique_ou_eco",
+    anchor:
+      /physique(?:[\s-]+chimie)?|chimie\b|enseignement\s+scientifique|\bSI\b(?!\s*\d)|sciences\s+de\s+l['’]ing[ée]nieur/i,
   },
-  { test: (l) => /fran[çc]ais|litt[ée]rature/i.test(l), matiere: "francais_philo" },
-  { test: (l) => /philo(?:sophie)?/i.test(l), matiere: "francais_philo" },
+  { matiere: "francais_philo", anchor: /fran[çc]ais|litt[ée]rature/i },
+  { matiere: "francais_philo", anchor: /\bphilo(?:sophie)?\b/i },
   {
-    test: (l) =>
-      /anglais|lv1|lv2|llcer|langues?\s+vivantes|espagnol|allemand|italien|portugais/i.test(l),
     matiere: "anglais",
+    anchor: /anglais|lv\s*1|lv\s*2|llcer|langues?\s+vivantes|espagnol|allemand|italien|portugais/i,
   },
-  { test: (l) => /histoire|g[ée]ographie|hgg?sp|\bhg\b/i.test(l), matiere: "histoire" },
-  { test: (l) => /eps\b|sport|activit[ée]s?\s+physiques/i.test(l), matiere: "sport" },
+  { matiere: "histoire", anchor: /histoire|g[ée]ographie|hgg?sp|\bHG\b|ens(eignement)?\s+moral\s+et\s+civique/i },
+  { matiere: "sport", anchor: /\bEPS\b|éducation\s+physique|sport|activit[ée]s?\s+physiques/i },
 ];
+
+/** Lignes où le PDF a collé en-tête / pied de page : pas des relevés de notes. */
+function isLikelyNoiseLine(line: string): boolean {
+  const l = line.toLowerCase();
+  if (line.length > 240) return true;
+  if (/\d{5}\s+[a-zéû]+/i.test(line) && /paris|lyon|marseille|toulouse/i.test(l)) return true;
+  if (/boulevard|rue\s+de\s+l['’]|avenue\s+|place\s+des?\s+/i.test(line)) return true;
+  if (/né\s+le\s+\d{1,2}\s*\/\s*\d{1,2}\s*\/\s*\d{2,4}/i.test(line)) return true;
+  if (/collège\s+et\s+lycée|lycée\s+privé|académie\s+de/i.test(l)) return true;
+  if (/fax|tél\.|téléphone|@|www\.|https?:\/\//i.test(line)) return true;
+  if (
+    /bulletin\s+du\s+\d/i.test(l) &&
+    (/\d{2,3}\s+boulevard|rue\s+/i.test(line) || /axelmans|exelmans|mcc\s+axes/i.test(l))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Plus le score est haut, plus la ligne ressemble à un bloc « relevé de notes ». */
+function releveLineScore(line: string): number {
+  let s = 0;
+  const l = line.toLowerCase();
+  if (/relevé|releve/i.test(line)) s += 6;
+  if (/terminale|\btle\b|année\s+scolaire/i.test(line)) s += 3;
+  if (/trimestre|1er\s+trim|2[èe]me\s+trim/i.test(line)) s += 2;
+  if (/matière|matieres|disciplines?/i.test(line)) s += 2;
+  if (/\/\s*20|moyenne|note\s*:/i.test(line)) s += 2;
+  if (line.length > 140) s -= 1;
+  if (/élèves?\)/i.test(l)) s += 1;
+  return s;
+}
 
 function clamp20(n: number): number | null {
   if (!Number.isFinite(n)) return null;
@@ -44,15 +74,20 @@ function clamp20(n: number): number | null {
   return Math.round(n * 100) / 100;
 }
 
-/** Extrait une note /20 plausible sur une ligne de bulletin (évite les petits entiers type coefficient si possible). */
-export function extractBulletinNoteFromLine(line: string): number | null {
-  const s = line.replace(/\s+/g, " ").trim();
-  if (/coef|coefficient|heures?\s*:\s*\d|absences?|retards?/i.test(s)) {
+/**
+ * Note /20 dans un fragment de ligne (souvent tout ce qui suit le nom de la matière).
+ * Privilégie XX,XX/20 puis un seul décimal dans [0,20].
+ */
+export function extractBulletinNoteFromLine(fragment: string): number | null {
+  const s = fragment.replace(/\s+/g, " ").trim();
+  if (!s) return null;
+
+  if (/coef|coefficient|absences?|retards?\s*:/i.test(s)) {
     const dec = s.match(/(\d{1,2})[,.](\d{1,2})\s*\/\s*20/);
     if (dec) return clamp20(parseFloat(`${dec[1]}.${dec[2]}`));
   }
 
-  const slash = s.match(/(\d{1,2})[,.](\d{1,2})\s*\/\s*20|(\d{1,2})\s*\/\s*20/);
+  const slash = s.match(/(\d{1,2})[,.](\d{1,2})\s*\/\s*20|(\d{1,2})\s*\/\s*20\b/);
   if (slash) {
     if (slash[1] != null && slash[2] != null) {
       return clamp20(parseFloat(`${slash[1]}.${slash[2]}`));
@@ -60,25 +95,43 @@ export function extractBulletinNoteFromLine(line: string): number | null {
     if (slash[3]) return clamp20(parseInt(slash[3], 10));
   }
 
-  const decimals = [...s.matchAll(/(\d{1,2})[,.](\d{1,2})\b/g)].map((m) =>
+  const decimals = [...s.matchAll(/(\d{1,2})[,.](\d{2})\b/g)].map((m) =>
     clamp20(parseFloat(`${m[1]}.${m[2]}`)),
   );
   const validDec = decimals.filter((n): n is number => n != null);
   if (validDec.length === 1) return validDec[0];
   if (validDec.length > 1) {
-    const likely = validDec.filter((n) => n >= 5);
-    if (likely.length === 1) return likely[0];
-    return validDec[0];
+    const inRange = validDec.filter((n) => n >= 0 && n <= 20);
+    const plausible = inRange.filter((n) => n >= 8 || inRange.length === 1);
+    if (plausible.length === 1) return plausible[0];
+    if (plausible.length > 1) return plausible[0];
+    return inRange[0] ?? null;
   }
 
   const ints = [...s.matchAll(/\b(\d{1,2})\b/g)].map((m) => clamp20(parseInt(m[1], 10)));
-  const ok = ints.filter((n): n is number => n != null && n <= 20);
+  const ok = ints.filter((n): n is number => n != null);
   if (ok.length === 1) return ok[0];
   if (ok.length > 1) {
     const big = ok.filter((n) => n >= 8);
-    if (big.length >= 1) return big[0];
+    if (big.length === 1) return big[0];
+    if (big.length > 1) return big[0];
   }
   return null;
+}
+
+type ScoredPick = {
+  matiere: LyceeMatiere;
+  note: number;
+  ligne: string;
+  score: number;
+};
+
+function betterPick(a: ScoredPick, b: ScoredPick): ScoredPick {
+  if (b.score > a.score) return b;
+  if (a.score > b.score) return a;
+  if (b.note >= 8 && a.note < 8) return b;
+  if (a.note >= 8 && b.note < 8) return a;
+  return b.note >= a.note ? b : a;
 }
 
 export function detectTrimestre(text: string): TrimKey | null {
@@ -115,8 +168,7 @@ export function hintsFromBulletinFilename(name: string): {
 
 export function parseBulletinText(fullText: string, filename?: string): BulletinParseResult {
   const warnings: string[] = [];
-  const matched: BulletinParseResult["matched"] = [];
-  const buckets: Partial<Record<LyceeMatiere, number[]>> = {};
+  const picks = new Map<LyceeMatiere, ScoredPick>();
 
   const text = fullText.replace(/\r/g, "\n");
   let trimestre = detectTrimestre(text);
@@ -137,25 +189,47 @@ export function parseBulletinText(fullText: string, filename?: string): Bulletin
   for (const raw of lines) {
     const line = raw.normalize("NFC");
     if (line.length < 4) continue;
-    const rule = SUBJECT_RULES.find((r) => r.test(line));
-    if (!rule) continue;
-    const note = extractBulletinNoteFromLine(line);
-    if (note == null) continue;
-    if (!buckets[rule.matiere]) buckets[rule.matiere] = [];
-    buckets[rule.matiere]!.push(note);
-    matched.push({ matiere: rule.matiere, note, ligne: line.slice(0, 120) });
+    if (isLikelyNoiseLine(line)) continue;
+
+    const baseScore = releveLineScore(line);
+
+    for (const { matiere, anchor } of SUBJECT_RULES) {
+      const anchorCopy = new RegExp(anchor.source, anchor.flags);
+      const m = anchorCopy.exec(line);
+      if (!m) continue;
+      const tail = line.slice(m.index + m[0].length);
+      const note = extractBulletinNoteFromLine(tail);
+      if (note == null) continue;
+
+      const combined = baseScore + (m.index < 20 ? 1 : 0);
+      const candidate: ScoredPick = {
+        matiere,
+        note,
+        ligne: line.slice(0, 200),
+        score: combined,
+      };
+      const prev = picks.get(matiere);
+      if (!prev) picks.set(matiere, candidate);
+      else picks.set(matiere, betterPick(prev, candidate));
+    }
   }
 
   const matieres: Partial<Record<LyceeMatiere, number>> = {};
+  const matched: BulletinParseResult["matched"] = [];
   for (const m of LYCEE_MATIERES) {
-    const arr = buckets[m];
-    if (!arr?.length) continue;
-    matieres[m] = Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100) / 100;
+    const p = picks.get(m);
+    if (!p) continue;
+    matieres[m] = p.note;
+    matched.push({ matiere: m, note: p.note, ligne: p.ligne });
   }
 
   if (matched.length === 0) {
     warnings.push(
-      "Aucune matière reconnue avec une note — le PDF est peut‑être scanné (image) ou la mise en page est atypique. Essaie un bulletin « texte » ou copie-colle le relevé.",
+      "Aucune matière reconnue avec une note — le PDF est peut‑être scanné (image), mal ordonné, ou atypique. Essaie « Forcer l’OCR » ou un export texte du bulletin.",
+    );
+  } else if (matched.length < 3) {
+    warnings.push(
+      "Peu de matières extraites : si le relevé est sur plusieurs colonnes, le texte du PDF peut être mélangé. « Forcer l’OCR » ou un autre export peut aider.",
     );
   }
 

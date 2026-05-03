@@ -86,8 +86,10 @@ export function BulletinPdfImport() {
   return (
     <div className="bulletin-import">
       <p className="bulletin-import__intro">
-        Dépose un bulletin PDF : on lit d’abord le texte intégré ; si c’est un scan, l’OCR (Tesseract, français)
-        prend le relais automatiquement. Les notes remplissent le tableau lycée pour l’année et le trimestre choisis.
+        Dépose un bulletin PDF : on lit d’abord le texte intégré ; si c’est un scan ou peu de texte, l’OCR
+        (Tesseract) prend le relais. Les en-têtes (adresse, établissement) sont ignorés ; on garde la ligne qui
+        ressemble le plus à un relevé (« Relevé », trimestre…). Si le bandeau indique « texte du PDF » mais les
+        notes sont fausses, coche « Forcer l’OCR ».
       </p>
 
       <label className="bulletin-import__force">

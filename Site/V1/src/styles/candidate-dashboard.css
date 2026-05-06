@@ -152,6 +152,26 @@
   color: var(--muted);
 }
 
+.radar-legend-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 4px;
+}
+
+.radar-ref-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.radar-ref-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
 .radar-legend strong {
   color: var(--text);
 }

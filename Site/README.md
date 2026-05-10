@@ -1,9 +1,11 @@
 # L'Etudiant - Linkage (Neo4j)
 
+Ce fichier documente surtout **Neo4j, import CSV et API Linkage** sous `Site/`. Pour l’aperçu produit complet (simulateur, écoles, structure du repo, extension Chrome), voir le **[README à la racine du dépôt](../README.md)**.
+
 Ce dossier `Site/` contient:
 - un front React/Vite dans `V1`
 - un backend Express/Neo4j dans `backend`
-- une base Neo4j locale via Docker Compose
+- une base Neo4j locale via Docker Compose (image **Neo4j 5.x**, cf. `docker-compose.yml`)
 
 ## Prerequis
 
@@ -129,12 +131,16 @@ API graph: <http://localhost:4000/api/linkage/graph>
 
 Le endpoint graph (`graphEngine: neighborhood`) reprend la logique Aura : **1 saut** depuis le `Student` centre, **ambassadeurs** sur les écoles `STUDIES_AT` / `INTERESTED_IN`, puis pour chaque nœud pivot un **CALL** avec `ORDER BY type` et **`perNodeLimit`** arêtes max, puis troncature globale `maxEdges` et cap `maxNodes`.
 
-Paramètres:
+Paramètres (query string):
 - `centerEmail` (recommandé, même email que le compte démo / import CSV)
 - `centerPrenom` + `centerNom` ou `centerStudentId` si pas d’email
 - `maxEdges` (15..400), `maxNodes` (24..96), `perNodeLimit` (3..25, défaut 10)
-- `types` (CSV des types de relation)
-- Si un centre explicite est demandé mais **aucun** `Student` ne matche → réponse vide et `meta.centerMatched: false` (pas de fallback aléatoire).
+- `maxDepth` (1..3, défaut 2) — **renvoyé dans `meta`** ; la requête actuelle `neighborhood` ne l’utilise pas encore pour élargir la profondeur Cypher (moteur fixe: 1 saut centre + expansion par nœud)
+- `types` (liste de types de relation, séparés par des virgules) — filtre les arêtes retournées
+
+**Comportement du centre:**
+- **Centre explicite** (`centerEmail`, ou `centerStudentId`, ou `centerPrenom` + `centerNom`) et **aucun** `Student` ne correspond → graphe vide, `meta.centerMatched: false` (pas de tirage au hasard).
+- **Aucun centre explicite** (tous les identifiants vides) → le backend peut utiliser un **étudiant de secours** (premier `Student` par email trié) ; `meta.centerFallbackUsed: true` dans ce cas. Utile pour le debug ; le front `/linkage` envoie en pratique l’email du profil.
 
 Exemple:
 
@@ -142,7 +148,7 @@ Exemple:
 http://localhost:4000/api/linkage/graph?centerEmail=l%C3%A9o.martin114%40mail.fr&maxEdges=250&maxNodes=96&perNodeLimit=10
 ```
 
-Front : `/linkage` utilise l’email du profil connecté ; surcharge possible : `?centerEmail=...&perNodeLimit=12`.
+Front : `/linkage` utilise l’email du profil connecté (et prénom/nom du profil en secours). Surcharge URL possible, ex. `?centerEmail=...&perNodeLimit=12`. Les curseurs **maxEdges / maxNodes** se règlent dans l’UI puis rechargement du graphe.
 
 ## 5) Lancer le frontend
 
